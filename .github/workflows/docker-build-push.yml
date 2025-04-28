@@ -34,6 +34,7 @@ jobs:
           #   ${{ secrets.DOCKERHUB_USERNAME }}/feeds-lister:latest
           #   ${{ secrets.DOCKERHUB_USERNAME }}/feeds-lister:${{ github.sha }}
           #   ${{ secrets.DOCKERHUB_USERNAME }}/feeds-lister:${{ github.ref_name }}
+          no-cache: true
 
           # file: ./path/to/your/Dockerfile
 
