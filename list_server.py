@@ -13,7 +13,7 @@ from socketserver import ThreadingMixIn
 import shutil
 
 LISTEN_PORT = 8001
-FILE_SERVER_ROOT = "/home/ubuntu/Downloads/firmware"
+FILE_SERVER_ROOT = os.environ.get('FILE_SERVER_ROOT', '/feeds_data')
 CSS_URL = "/style/main.css"
 
 def human_readable_size(size_bytes):
