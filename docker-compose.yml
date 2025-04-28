@@ -4,7 +4,7 @@ version: '3.9'
 
 services:
   feeds-lister:
-    image: feeds-lister:latest
+    image: jackie264/feeds-lister:latest
 
     container_name: feeds-lister-container
     restart: unless-stopped
