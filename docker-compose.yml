@@ -24,6 +24,9 @@ services:
       retries: 3
       start_period: 5s
 
+    labels:
+      - "watchtower.enable=true"
+
     # COMMAND (CMD) 是在 Dockerfile 中定义的 (CMD ["python3", "list_server.py"])
     # 如果您想在这里覆盖 Dockerfile 中的 COMMAND，可以使用 'command' 指令
     # command: ["python3", "list_server.py"]
