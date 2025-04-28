@@ -1,0 +1,53 @@
+# .github/workflows/docker-build-push.yml
+
+name: Docker Build and Push # 工作流程的名称
+
+on:
+  push:
+    branches:
+      - main # 当代码推送到 main 分支时触发工作流程 (如果您的主分支是 master，请修改此处)
+      # - master
+
+jobs:
+  build_and_push: # 定义一个名为 build_and_push 的作业
+    runs-on: ubuntu-latest # 在最新的 Ubuntu 环境中运行此作业
+
+    steps:
+      - name: Checkout Code # 步骤名称：检出代码
+        uses: actions/checkout@v4 # 使用官方的 checkout action 获取仓库代码
+
+      - name: Set up Docker Buildx # 步骤名称：设置 Docker Buildx
+        # Buildx 是 Docker 的下一代构建工具，支持构建多平台镜像等
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub # 步骤名称：登录 Docker Hub
+        # 使用官方的 login action 登录 Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }} # 从 GitHub Secrets 获取 Docker Hub 用户名
+          password: ${{ secrets.DOCKERHUB_TOKEN }}   # 从 GitHub Secrets 获取 Docker Hub PAT
+
+      - name: Build and Push Docker Image # 步骤名称：构建并推送 Docker 镜像
+        # 使用官方的 build-push action 构建并推送镜像
+        uses: docker/build-push-action@v5
+        with:
+          context: . # 构建上下文为仓库根目录 (Dockerfile 应该在根目录或指定 file 参数)
+          push: true # 设置为 true，表示构建完成后推送到仓库
+          # === 设置镜像标签 ===
+          # 这里我们将镜像标记为 latest，并包含您的 Docker Hub 用户名
+          # 格式为 dockerhub用户名/镜像名称:标签
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/feeds-lister:latest
+          # 您可以添加更多标签，例如基于提交 SHA 或分支名
+          # tags: |
+          #   ${{ secrets.DOCKERHUB_USERNAME }}/feeds-lister:latest
+          #   ${{ secrets.DOCKERHUB_USERNAME }}/feeds-lister:${{ github.sha }} # 使用提交的短 SHA 作为标签
+          #   ${{ secrets.DOCKERHUB_USERNAME }}/feeds-lister:${{ github.ref_name }} # 使用分支名作为标签
+          # === 标签设置结束 ===
+
+          # 可选：如果您的 Dockerfile 不在仓库根目录，请取消注释并指定路径
+          # file: ./path/to/your/Dockerfile
+
+      # - name: Verify Pushed Image (Optional) # 可选步骤：验证推送的镜像
+      #   run: |
+      #     echo "Image ${{ secrets.DOCKERHUB_USERNAME }}/feeds-lister:latest pushed successfully."
+          # 您可以在这里添加步骤来运行一个快速测试容器以验证镜像功能
