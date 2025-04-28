@@ -1,0 +1,21 @@
+# docker-compose.yml
+
+version: '3.9'
+
+services:
+  feeds-lister:
+    image: feeds-lister:latest
+
+    container_name: feeds-lister-container
+    restart: unless-stopped
+    network_mode: host
+
+    volumes:
+      - /home/ubuntu/Downloads/firmware:/feeds_data
+
+    environment:
+      - FILE_SERVER_ROOT=/feeds_data
+
+    # COMMAND (CMD) 是在 Dockerfile 中定义的 (CMD ["python3", "list_server.py"])
+    # 如果您想在这里覆盖 Dockerfile 中的 COMMAND，可以使用 'command' 指令
+    # command: ["python3", "list_server.py"]
