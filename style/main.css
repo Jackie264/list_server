@@ -1,4 +1,3 @@
-/* 基本 body 和容器样式 */
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
     margin: 0px;
@@ -15,7 +14,6 @@ body {
     padding: 0px;
 }
 
-/* 标题和水平线样式 */
 h1 {
     color: #333;
     border-bottom: none;
@@ -33,7 +31,6 @@ hr {
     margin-bottom: 20px;
 }
 
-/* 表格整体样式 */
 table {
     border-collapse: collapse;
     width: 100%;
@@ -44,7 +41,6 @@ table {
     border-top-right-radius: 4px;
 }
 
-/* 表头和单元格基本样式 */
 th, td {
     padding: 6px 10px;
     text-align: left;
@@ -58,24 +54,14 @@ thead th {
     background: linear-gradient(to bottom, #444, #222);
     color: white;
     font-weight: bold;
-    font-size: 0.8em; /* Specific header font size */
+    font-size: 0.8em;
     text-shadow: 1px 1px 1px #000;
-
-    /* === 显式定义 Thead Th 边框 === */
-    /* 移除原来的 border: 1px solid #111; */
-    border-top: none; /* 没有顶部边框 */
-    border-bottom: 2px solid #222; /* 底部粗黑边框 */
-    border-left: 1px solid #444; /* <-- 左边框颜色与 tbody 匹配 */
-    border-right: 1px solid #444; /* <-- 右边框颜色与 tbody 匹配 */
-    /* === 显式定义 Thead Th 边框结束 === */
+    border-top: none;
+    border-bottom: 2px solid #222;
+    border-left: 1px solid #444;
+    border-right: 1px solid #444;
 }
 
-/* 移除原来针对第一列和最后一列的边框覆盖，因为上面已经显式定义了 */
-/* thead th:first-child { border-left: 1px solid #ddd; } */
-/* thead th:last-child { border-right: 1px solid #ddd; } */
-
-
-/* Style for sortable headers */
 thead th[data-sort-by] {
     cursor: pointer;
     position: relative;
@@ -83,7 +69,6 @@ thead th[data-sort-by] {
     user-select: none;
 }
 
-/* Sort indicator arrows */
 thead th[data-sort-by][data-sort-direction="asc"]::after {
     content: " ▲";
     position: absolute;
@@ -102,7 +87,6 @@ thead th[data-sort-by][data-sort-direction="desc"]::after {
     display: inline-block;
 }
 
-/* Tbody td style */
 tbody td {
     border-left: 1px solid #ddd;
     border-right: 1px solid #ddd;
@@ -119,12 +103,9 @@ tbody tr:last-child {
     border-bottom: none;
 }
 
-/* Specific column widths */
 td:nth-child(1), thead th:nth-child(1) {
     width: 60%;
     text-align: left;
-    /* 左边框已经由 thead th 和 tbody td 的 border-left 规则提供 */
-    /* border-left: 1px solid #ddd; */
 }
 
 td:nth-child(2), thead th:nth-child(2) {
@@ -137,27 +118,16 @@ td:nth-child(3), thead th:nth-child(3) {
     width: 25%;
     white-space: nowrap;
     text-align: right;
-    /* 右边框已经由 thead th 和 tbody td 的 border-right 规则提供 */
-    /* border-right: 1px solid #ddd; */
 }
 
-/* Ensure headers match column alignment (redundant rules, can remove if not needed) */
-/* thead th:nth-child(1) { text-align: left; } */
-/* thead th:nth-child(2) { text-align: right; } */
-/* thead th:nth-child(3) { text-align: right; } */
-
-
-/* 斑马纹行背景 */
 tbody tr:nth-child(even) {
     background-color: #f9f9f9;
 }
 
-/* 行悬停效果 */
 tbody tr:hover {
     background-color: #e0e0e0;
 }
 
-/* Link styles */
 a {
     text-decoration: none;
     color: #0066cc;
@@ -167,14 +137,12 @@ a:hover {
     text-decoration: underline;
 }
 
-/* Parent directory link style */
 td a[href$="/../"],
 td a[href="/../"] {
     font-weight: normal;
     color: #0066cc;
 }
 
-/* Footer style */
 .footer {
     text-align: center;
     margin-top: 20px;
@@ -182,12 +150,10 @@ td a[href="/../"] {
     color: #666;
 }
 
-/* === 新增的信息行样式 === */
 .footer-info {
     text-align: right;
-    margin-top: 10px; /* 在表格和信息行之间添加间距 */
-    margin-bottom: 10px; /* 在信息行和版权行之间添加间距 */
-    font-size: 0.7em; /* 字体大小比版权信息稍微大一点或一致 */
-    color: #666; /* 字体颜色与版权信息一致 */
+    margin-top: 10px;
+    margin-bottom: 10px;
+    font-size: 0.7em;
+    color: #666;
 }
-/* === 信息行样式结束 === */
