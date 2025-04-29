@@ -6,6 +6,9 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'Dockerfile'
+      - 'list_server.py'
 
 jobs:
   build_and_push:
