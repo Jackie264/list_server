@@ -270,7 +270,7 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
 
         r.append('  </span>')
         r.append('  <span class="footer-right">')
-        r.append('    Page content is automatically generated with <a href="https://www.python.org/">Python</a>')
+        r.append('    Page is auto-generated with <a href="https://www.python.org/" target="_blank">Python</a>')
         r.append('  </span>')
         r.append('</p>')
         
