@@ -165,6 +165,7 @@ td a[href="/../"] {
 
 /* Optional styles for the left and right spans if needed */
 .footer-left {
+    padding-left: 15px;
     /* Add specific styles for the left content if necessary */
 }
 
