@@ -21,19 +21,19 @@ DOMAIN_FOOTER_INFO = {
     "sh-mtgc.com": {
         "icp_text": "沪ICP备2024068389号-2",
         "icp_url": "https://beian.miit.gov.cn/",
-        "mps_text": "沪公网安备 _sh-mtgc.com_号",
+        "mps_text": "",
         "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=_sh-mtgc.com_代码"
     },
     "onenas.space": {
-        "icp_text": "沪ICP备_ONENAS_SPACE_号",
+        "icp_text": "",
         "icp_url": "https://beian.miit.gov.cn/",
-        "mps_text": "沪公网安备 _ONENAS_SPACE_号",
+        "mps_text": "",
         "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=_ONENAS_SPACE_代码"
     },
     "onenas.fun": {
         "icp_text": "沪ICP备2025124234号-1",
         "icp_url": "https://beian.miit.gov.cn/",
-        "mps_text": "沪公网安备 _ONENAS_FUN_号",
+        "mps_text": "",
         "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=_ONENAS_FUN_代码"
     }
 }
@@ -250,14 +250,27 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             display_domain = main_domain
             domain_info = DOMAIN_FOOTER_INFO.get(display_domain)
 
-        # r.append('<p class="footer-info">Page content is automatically generated with <a href="https://www.python.org/">Python</a>.</p>')
         r.append('<p class="footer-info">')
         r.append('  <span class="footer-left">')
-        if domain_info:
-            r.append(f'    ICP备案号: <a href="{domain_info["icp_url"]}" target="_blank">{domain_info["icp_text"]}</a>')
-            r.append('    &nbsp;&nbsp;') # 添加一些空格作为分隔
-            r.append(f'    <a href="{domain_info["mps_url"]}" target="_blank">{domain_info["mps_text"]}</a>')
-        # Else: 如果 domain_info 是 None (即在 DOMAIN_FOOTER_INFO 中没有找到对应域名)，左侧 span 保持为空
+        if domain_info and (domain_info.get("icp_text", "") or domain_info.get("mps_text", "")):
+            icp_text_val = domain_info.get("icp_text", "")
+            icp_url_val = domain_info.get("icp_url", "#") # URL 默认使用 # 避免链接断裂
+            mps_text_val = domain_info.get("mps_text", "")
+            mps_url_val = domain_info.get("mps_url", "#") # URL 默认使用 # 避免链接断裂
+
+            # 如果 ICP 备案号文本非空，则生成 ICP 链接
+            if icp_text_val:
+                 r.append(f'    <a href="{html.escape(icp_url_val)}" target="_blank">{html.escape(icp_text_val)}</a>')
+
+            # 如果 ICP 备案号和公安网备号文本都非空，则添加分隔符
+            if icp_text_val and mps_text_val:
+                 r.append('    &nbsp;&nbsp;')
+
+            # 如果公安网备号文本非空，则生成公安网备链接
+            if mps_text_val:
+                 r.append(f'    <a href="{html.escape(mps_url_val)}" target="_blank">{html.escape(mps_text_val)}</a>')
+
+        # 如果 domain_info 是 None，或者 domain_info 中 icp_text 和 mps_text 都为空字符串，则不执行上面的 if 块，左侧 span 保持为空。
 
  
         r.append('  </span>')
