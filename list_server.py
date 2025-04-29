@@ -16,6 +16,27 @@ LISTEN_PORT = 8001
 FILE_SERVER_ROOT = os.environ.get('FILE_SERVER_ROOT', '/feeds_data')
 CSS_URL = "/style/main.css"
 
+DOMAIN_FOOTER_INFO = {
+    "sh-mtgc.com": {
+        "icp_text": "沪ICP备2024068389号-2",
+        "icp_url": "https://beian.miit.gov.cn/",
+        "mps_text": "沪公网安备 _sh-mtgc.com_号",
+        "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=_sh-mtgc.com_代码"
+    },
+    "onenas.space": {
+        "icp_text": "沪ICP备_ONENAS_SPACE_号",
+        "icp_url": "https://beian.miit.gov.cn/",
+        "mps_text": "沪公网安备 _ONENAS_SPACE_号",
+        "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=_ONENAS_SPACE_代码"
+    },
+    "onenas.fun": {
+        "icp_text": "沪ICP备2025124234号-1",
+        "icp_url": "https://beian.miit.gov.cn/",
+        "mps_text": "沪公网安备 _ONENAS_FUN_号",
+        "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=_ONENAS_FUN_代码"
+    }
+}
+
 def human_readable_size(size_bytes):
     if size_bytes is None:
         return "-"
@@ -216,6 +237,8 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
 
         display_domain = "Unknown Host"
         host_header = self.headers.get('Host')
+        domain_info = None
+        
         if host_header:
             hostname = host_header.split(':')[0]
             parts = hostname.split('.')
@@ -224,9 +247,24 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             else:
                 main_domain = hostname
             display_domain = main_domain
+            domain_info = DOMAIN_FOOTER_INFO.get(display_domain)
 
-        r.append('<p class="footer-info">Page content is automatically generated with <a href="https://www.python.org/">Python</a>.</p>')
+        # r.append('<p class="footer-info">Page content is automatically generated with <a href="https://www.python.org/">Python</a>.</p>')
+        r.append('<p class="footer-info">')
+        r.append('  <span class="footer-left">')
+        if domain_info:
+            r.append(f'    ICP备案号: <a href="{domain_info["icp_url"]}" target="_blank">{domain_info["icp_text"]}</a>')
+            r.append('    &nbsp;&nbsp;') # 添加一些空格作为分隔
+            r.append(f'    <a href="{domain_info["mps_url"]}" target="_blank">{domain_info["mps_text"]}</a>')
+        # Else: 如果 domain_info 是 None (即在 DOMAIN_FOOTER_INFO 中没有找到对应域名)，左侧 span 保持为空
 
+ 
+        r.append('  </span>')
+        r.append('  <span class="footer-right">')
+        r.append('    Page content is automatically generated with <a href="https://www.python.org/">Python</a>')
+        r.append('  </span>')
+        r.append('</p>')
+        
         current_year = datetime.datetime.now().year
         r.append(f'<p class="footer">Copyright &copy; {current_year} {html.escape(display_domain)}</p>')
         r.append('<script src="/style/sort.js"></script>')
