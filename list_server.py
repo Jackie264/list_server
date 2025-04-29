@@ -11,6 +11,7 @@ import datetime
 import time
 from socketserver import ThreadingMixIn
 import shutil
+import socket
 
 LISTEN_PORT = 8001
 FILE_SERVER_ROOT = os.environ.get('FILE_SERVER_ROOT', '/feeds_data')
@@ -314,7 +315,11 @@ if __name__ == "__main__":
 
     server_address = ('', LISTEN_PORT)
     try:
-        with ThreadedTCPServer(server_address, CustomListingAndFileHandler) as httpd:
+        with ThreadedTCPServer(server_address, CustomListingAndFileHandler, bind_and_activate=False) as httpd:
+            httpd.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            httpd.server_bind()
+            httpd.server_activate()
+            
             print(f"Starting custom listing and file server on port {LISTEN_PORT}")
             print(f"Serving content from: {FILE_SERVER_ROOT}")
             httpd.serve_forever()
