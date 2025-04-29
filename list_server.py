@@ -258,21 +258,16 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             mps_text_val = domain_info.get("mps_text", "")
             mps_url_val = domain_info.get("mps_url", "#") # URL 默认使用 # 避免链接断裂
 
-            # 如果 ICP 备案号文本非空，则生成 ICP 链接
             if icp_text_val:
-                 r.append(f'    <a href="{html.escape(icp_url_val)}" target="_blank">{html.escape(icp_text_val)}</a>')
+                r.append(f'    <a href="{html.escape(icp_url_val)}" target="_blank">{html.escape(icp_text_val)}</a>')
 
-            # 如果 ICP 备案号和公安网备号文本都非空，则添加分隔符
             if icp_text_val and mps_text_val:
-                 r.append('    &nbsp;&nbsp;')
+                r.append('    &nbsp;&nbsp;')
 
-            # 如果公安网备号文本非空，则生成公安网备链接
             if mps_text_val:
-                 r.append(f'    <a href="{html.escape(mps_url_val)}" target="_blank">{html.escape(mps_text_val)}</a>')
+                r.append(f'    <img src="https://beian.mps.gov.cn/img/logo01.dd7ff50e.png" alt="公安网备图标" class="beian-icon">')
+                r.append(f'    <a href="{html.escape(mps_url_val)}" target="_blank">{html.escape(mps_text_val)}</a>')
 
-        # 如果 domain_info 是 None，或者 domain_info 中 icp_text 和 mps_text 都为空字符串，则不执行上面的 if 块，左侧 span 保持为空。
-
- 
         r.append('  </span>')
         r.append('  <span class="footer-right">')
         r.append('    Page content is automatically generated with <a href="https://www.python.org/">Python</a>')
