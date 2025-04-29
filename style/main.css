@@ -151,9 +151,23 @@ td a[href="/../"] {
 }
 
 .footer-info {
-    text-align: right;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
     margin-top: 10px;
+    padding: 10px 0;
+    border-top: 1px solid #eee;
     margin-bottom: 10px;
     font-size: 0.7em;
     color: #666;
+}
+
+/* Optional styles for the left and right spans if needed */
+.footer-left {
+    /* Add specific styles for the left content if necessary */
+}
+
+.footer-right {
+    /* Add specific styles for the right content if necessary */
 }
