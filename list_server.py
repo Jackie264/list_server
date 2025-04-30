@@ -308,14 +308,19 @@ class ThreadedTCPServer(ThreadingMixIn, socketserver.TCPServer):
 
 if __name__ == "__main__":
     print("Feeds directory lister script is starting...")
+    sys.stdout.flush()
     print(f"Running with Python version: {sys.version}")
+    sys.stdout.flush()
 
     if not os.path.isdir(FILE_SERVER_ROOT):
         print(f"Error: Feeds root directory not found or not accessible: {FILE_SERVER_ROOT}", file=sys.stderr)
+        sys.stdout.flush()
         sys.exit(1)
 
     print(f"Attempting to start server on port {LISTEN_PORT}")
+    sys.stdout.flush()
     print(f"Serving content from file root: {FILE_SERVER_ROOT}")
+    sys.stdout.flush()
 
     server_address = ('', LISTEN_PORT)
 
@@ -323,17 +328,22 @@ if __name__ == "__main__":
         with ThreadedTCPServer(server_address, CustomListingAndFileHandler, bind_and_activate=False) as httpd:
             httpd.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             print("Setting SO_REUSEADDR option and attempting to bind socket...")
+            sys.stdout.flush()
 
             httpd.server_bind()
             httpd.server_activate()
 
             print(f"Server successfully bound and activated on http://localhost:{LISTEN_PORT}")
+            sys.stdout.flush()
             print("Starting server loop. Press Ctrl+C to stop.")
+            sys.stdout.flush()
 
             httpd.serve_forever()
     except PermissionError:
         print(f"Error: Permission denied to bind on port {LISTEN_PORT}. Try running with sudo or a higher port.", file=sys.stderr)
+        sys.stdout.flush()
         sys.exit(1)
     except Exception as e:
         print(f"An error occurred: {e}", file=sys.stderr)
+        sys.stdout.flush()
         sys.exit(1)
