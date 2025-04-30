@@ -141,7 +141,7 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
         header_components.append(f'<img src="{html.escape("/style/apple-touch-icon.png")}" class="listing-logo-image">')
         header_components.append('</span>')
         header_components.append('Index of')
-        header_components.append(' ')
+        header_components.append('&nbsp;')
         header_components.append('<a href="/">Home</a>')
 
         if display_url_path != '/':
