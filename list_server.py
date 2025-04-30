@@ -9,9 +9,10 @@ import sys
 import mimetypes
 import datetime
 import time
-from socketserver import ThreadingMixIn
+import ThreadingMixIn
 import shutil
 import socket
+from socketserver
 
 LISTEN_PORT = 8001
 FILE_SERVER_ROOT = os.environ.get('FILE_SERVER_ROOT', '/feeds_data')
@@ -317,19 +318,28 @@ class ThreadedTCPServer(ThreadingMixIn, socketserver.TCPServer):
     pass
 
 if __name__ == "__main__":
+    print("Feeds directory lister script is starting...")
+    print(f"Running with Python version: {sys.version}")
+    
     if not os.path.isdir(FILE_SERVER_ROOT):
         print(f"Error: Feeds root directory not found or not accessible: {FILE_SERVER_ROOT}", file=sys.stderr)
         sys.exit(1)
+
+    print(f"Attempting to start server on port {LISTEN_PORT}")
+    print(f"Serving content from file root: {FILE_SERVER_ROOT}")
 
     server_address = ('', LISTEN_PORT)
     try:
         with ThreadedTCPServer(server_address, CustomListingAndFileHandler, bind_and_activate=False) as httpd:
             httpd.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            print("Setting SO_REUSEADDR and attempting to bind socket...")
+            
             httpd.server_bind()
             httpd.server_activate()
             
-            print(f"Starting custom listing and file server on port {LISTEN_PORT}")
-            print(f"Serving content from: {FILE_SERVER_ROOT}")
+            print(f"Server successfully bound and activated on http://localhost:{LISTEN_PORT}")
+            print("Starting server loop. Press Ctrl+C to stop.")
+            
             httpd.serve_forever()
     except PermissionError:
         print(f"Error: Permission denied to bind on port {LISTEN_PORT}. Try running with sudo or a higher port.", file=sys.stderr)
