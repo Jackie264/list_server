@@ -9,10 +9,10 @@ import sys
 import mimetypes
 import datetime
 import time
-import ThreadingMixIn
 import shutil
 import socket
-from socketserver
+from socketserver import ThreadingMixIn
+
 
 LISTEN_PORT = 8001
 FILE_SERVER_ROOT = os.environ.get('FILE_SERVER_ROOT', '/feeds_data')
@@ -39,6 +39,7 @@ DOMAIN_FOOTER_INFO = {
     }
 }
 
+
 def human_readable_size(size_bytes):
     if size_bytes is None:
         return "-"
@@ -52,6 +53,7 @@ def human_readable_size(size_bytes):
     format_string = "{:.0f} {}" if i == 0 else "{:.1f} {}"
     return format_string.format(size_bytes, size_name[i])
 
+
 def format_mtime(timestamp):
     if timestamp is None:
         return "-"
@@ -59,6 +61,7 @@ def format_mtime(timestamp):
         return datetime.datetime.fromtimestamp(timestamp).strftime("%a %b %d %H:%M:%S %Y")
     except (ValueError, TypeError):
         return "-"
+
 
 class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -115,38 +118,21 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
 
         r = []
         r.append('<!DOCTYPE HTML>')
-        r.append('<html><head>')
+        r.append('<html lang="en">')
+        r.append('<head>')
         r.append('<meta charset="utf-8">')
-        r.append('<meta name="viewport" content="width=device-width, initial-scale=1.0">') # Added viewport meta tag
+        r.append('<meta name="viewport" content="width=device-width, initial-scale=1.0">')
         r.append(f'<title>Index of {html.escape(display_url_path)}</title>')
         r.append(f'<link rel="stylesheet" href="{html.escape(CSS_URL)}">')
 
-        # === Add favicon and related icon references ===
-        # Based on the generated files:
-        # Standard favicon.ico
         r.append('<link rel="icon" href="/style/favicon.ico" type="image/x-icon">')
-
-        # PNG format favicons
         r.append('<link rel="icon" type="image/png" sizes="16x16" href="/style/favicon-16x16.png">')
         r.append('<link rel="icon" type="image/png" sizes="32x32" href="/style/favicon-32x32.png">')
-
-        # Apple Touch Icon
         r.append('<link rel="apple-touch-icon" sizes="180x180" href="/style/apple-touch-icon.png">')
-
-        # Web App Manifest
         r.append('<link rel="manifest" href="/style/site.webmanifest">')
-
-        # Optional Meta tags
         r.append('<meta name="theme-color" content="#ffffff">')
 
-        # Add other potential links based on generated files if needed (mask-icon, msapplication, etc.)
-        # r.append('<link rel="mask-icon" href="/style/safari-pinned-tab.svg" color="#5bbad5">')
-        # r.append('<meta name="msapplication-TileColor" content="#da532c">')
-        # r.append('<meta name="msapplication-config" content="/style/browserconfig.xml">')
-
-        # === End favicon and related icon references ===
-
-        r.append('</head><body>') # This line is the end of </head> and start of <body>
+        r.append('</head><body>')
 
         r.append('<div class="container">')
 
@@ -157,7 +143,6 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             segments = display_url_path.strip('/').split('/')
             current_url_accumulator = '/'
             for i, segment in enumerate(segments):
-                separator = ' ' if i == 0 else ' / '
                 header_components.append(' / ')
                 escaped_segment = html.escape(segment)
                 quoted_segment_for_url = urllib.parse.quote(segment, errors='surrogateescape')
@@ -240,24 +225,26 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
         display_domain = "Unknown Host"
         host_header = self.headers.get('Host')
         domain_info = None
-        
+
         if host_header:
             hostname = host_header.split(':')[0]
             parts = hostname.split('.')
-            if len(parts) > 2:
-                main_domain = '.'.join(parts[-2:])
+            if len(parts) > 1:
+                 main_domain = '.'.join(parts[-2:])
             else:
-                main_domain = hostname
+                 main_domain = hostname
             display_domain = main_domain
+
             domain_info = DOMAIN_FOOTER_INFO.get(display_domain)
 
         r.append('<p class="footer-info">')
         r.append('  <span class="footer-left">')
+
         if domain_info and (domain_info.get("icp_text", "") or domain_info.get("mps_text", "")):
             icp_text_val = domain_info.get("icp_text", "")
-            icp_url_val = domain_info.get("icp_url", "#") # URL 默认使用 # 避免链接断裂
+            icp_url_val = domain_info.get("icp_url", "#")
             mps_text_val = domain_info.get("mps_text", "")
-            mps_url_val = domain_info.get("mps_url", "#") # URL 默认使用 # 避免链接断裂
+            mps_url_val = domain_info.get("mps_url", "#")
 
             if icp_text_val:
                 r.append(f'    <a href="{html.escape(icp_url_val)}" target="_blank">{html.escape(icp_text_val)}</a>')
@@ -274,7 +261,7 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
         r.append('    Page is auto-generated with <a href="https://www.python.org/" target="_blank">Python</a>')
         r.append('  </span>')
         r.append('</p>')
-        
+
         current_year = datetime.datetime.now().year
         r.append(f'<p class="footer">Copyright &copy; {current_year} {html.escape(display_domain)}</p>')
         r.append('<script src="/style/sort.js"></script>')
@@ -312,15 +299,17 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             self.send_error(http.HTTPStatus.FORBIDDEN, "Permission denied to read file.")
         except Exception as e:
             print(f"Error serving file {physical_path}: {e}", file=sys.stderr)
-            self.send_error(http.HTTPStatus.INTERNAL_SERVER_ERROR, "Error reading file.")
+            self.send_error(http.HTTPStatus.INTERNAL_SERVER_ERROR, "Internal server error.")
+
 
 class ThreadedTCPServer(ThreadingMixIn, socketserver.TCPServer):
     pass
 
+
 if __name__ == "__main__":
     print("Feeds directory lister script is starting...")
     print(f"Running with Python version: {sys.version}")
-    
+
     if not os.path.isdir(FILE_SERVER_ROOT):
         print(f"Error: Feeds root directory not found or not accessible: {FILE_SERVER_ROOT}", file=sys.stderr)
         sys.exit(1)
@@ -329,17 +318,18 @@ if __name__ == "__main__":
     print(f"Serving content from file root: {FILE_SERVER_ROOT}")
 
     server_address = ('', LISTEN_PORT)
+
     try:
         with ThreadedTCPServer(server_address, CustomListingAndFileHandler, bind_and_activate=False) as httpd:
             httpd.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            print("Setting SO_REUSEADDR and attempting to bind socket...")
-            
+            print("Setting SO_REUSEADDR option and attempting to bind socket...")
+
             httpd.server_bind()
             httpd.server_activate()
-            
+
             print(f"Server successfully bound and activated on http://localhost:{LISTEN_PORT}")
             print("Starting server loop. Press Ctrl+C to stop.")
-            
+
             httpd.serve_forever()
     except PermissionError:
         print(f"Error: Permission denied to bind on port {LISTEN_PORT}. Try running with sudo or a higher port.", file=sys.stderr)
