@@ -136,7 +136,11 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
 
         r.append('<div class="container">')
 
-        header_components = ['<h1>Index of ']
+        header_components = ['<h1>']
+        header_components.append('<span class="listing-logo-container">')
+        header_components.append(f'<img src="{html.escape("/style/apple-touch-icon.png")}" class="listing-logo-image">')
+        header_components.append('</span>')
+        header_components.append('Index of ')
         header_components.append('<a href="/">Home</a>')
 
         if display_url_path != '/':
@@ -263,7 +267,7 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
         r.append('</p>')
 
         current_year = datetime.datetime.now().year
-        r.append(f'<p class="footer">Copyright &copy; {current_year} {html.escape(display_domain)}</p>')
+        r.append(f'<p class="footer">Copyright &copy; {current_year} {html.escape(display_domain)} All Rights Reserved.</p>')
         r.append('<script src="/style/sort.js"></script>')
 
         r.append('</div>')
