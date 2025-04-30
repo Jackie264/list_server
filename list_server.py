@@ -28,14 +28,14 @@ DOMAIN_FOOTER_INFO = {
     "onenas.space": {
         "icp_text": "沪ICP备2025124234号-1",
         "icp_url": "https://beian.miit.gov.cn/",
-        "mps_text": "",
-        "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=_ONENAS_SPACE_代码"
+        "mps_text": "沪公网安备31011002007335号",
+        "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=31011002007335"
     },
     "onenas.fun": {
         "icp_text": "沪ICP备2025124234号-1",
         "icp_url": "https://beian.miit.gov.cn/",
-        "mps_text": "",
-        "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=_ONENAS_FUN_代码"
+        "mps_text": "沪公网安备31011002007335号",
+        "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=31011002007335"
     }
 }
 
@@ -254,7 +254,7 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
 
             if mps_text_val:
                 r.append(f'    <img src="https://beian.mps.gov.cn/img/logo01.dd7ff50e.png" alt="公安网备图标" class="beian-icon">')
-                r.append(f'    <a href="{html.escape(mps_url_val)}" target="_blank">{html.escape(mps_text_val)}</a>')
+                r.append(f'    <a href="{html.escape(mps_url_val)}" rel="noreferrer" target="_blank">{html.escape(mps_text_val)}</a>')
 
         r.append('  </span>')
         r.append('  <span class="footer-right">')
