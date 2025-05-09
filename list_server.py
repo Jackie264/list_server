@@ -26,7 +26,7 @@ DOMAIN_FOOTER_INFO = {
         "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=_sh-mtgc.com_代码"
     },
     "onenas.space": {
-        "icp_text": "沪ICP备2025124234号-1",
+        "icp_text": "沪ICP备2025124234号-2",
         "icp_url": "https://beian.miit.gov.cn/",
         "mps_text": "沪公网安备31011002007335号",
         "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=31011002007335"
