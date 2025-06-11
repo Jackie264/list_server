@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# app/list_server.py
 
 import http.server
 import socketserver
@@ -16,6 +17,7 @@ from socketserver import ThreadingMixIn
 
 LISTEN_PORT = 8001
 FILE_SERVER_ROOT = os.environ.get('FILE_SERVER_ROOT', '/feeds_data')
+STATIC_ASSETS_DIR = "/style"
 CSS_URL = "/style/main.css"
 
 DOMAIN_FOOTER_INFO = {
@@ -64,7 +66,84 @@ def format_mtime(timestamp):
 
 
 class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
+    # ==================== 新增方法来服务静态文件 ====================
+    def _serve_static_file(self, requested_url_path):
+        """
+        根据 URL 路径，从 STATIC_ASSETS_DIR 目录服务静态文件。
+        执行安全检查，防止目录遍历攻击。
+        """
+        try:
+            # 提取 /style/ 后的子路径，例如 "main.css" 或 "icons/favicon.ico"
+            # 假设所有静态文件请求都以 /style/ 开头
+            if requested_url_path.startswith('/style/'):
+                # 获取 /style/ 后的部分路径
+                sub_path = requested_url_path[len('/style/'):]
+            else:
+                # 理论上此分支不应该被触发，因为 do_GET 会先判断
+                self.send_error(http.HTTPStatus.INTERNAL_SERVER_ERROR, "Unexpected static path request.")
+                return
+
+            # 对子路径进行 URL 解码和规范化，防止编码问题和路径异常
+            decoded_sub_path = urllib.parse.unquote(sub_path, errors='surrogateescape')
+            normalized_sub_path = os.path.normpath(decoded_sub_path)
+
+            # 构建容器内部的完整文件系统路径
+            # os.path.join 会正确处理路径分隔符
+            physical_file_path = os.path.join(STATIC_ASSETS_DIR, normalized_sub_path)
+
+            # --- 关键安全检查：防止目录遍历攻击 ---
+            # 获取 STATIC_ASSETS_DIR 的绝对规范化路径
+            abs_static_root = os.path.abspath(STATIC_ASSETS_DIR)
+            # 获取请求文件路径的绝对规范化路径
+            abs_file_path = os.path.abspath(physical_file_path)
+
+            # 确保请求的文件路径确实位于 STATIC_ASSETS_DIR 之下
+            # os.path.commonpath 返回两个或多个路径的最长公共子路径
+            if not os.path.commonpath([abs_static_root, abs_file_path]) == abs_static_root:
+                self.send_error(http.HTTPStatus.FORBIDDEN, "Access to requested path outside static assets directory is forbidden.")
+                return
+            # --- 结束安全检查 ---
+
+            # 检查文件是否存在且是普通文件
+            if not os.path.isfile(abs_file_path):
+                self.send_error(http.HTTPStatus.NOT_FOUND, "Static file not found.")
+                return
+
+            # 猜测文件的 MIME 类型
+            mimetype, _ = mimetypes.guess_type(abs_file_path)
+            if mimetype is None:
+                mimetype = 'application/octet-stream' # 如果无法猜测，使用通用二进制流
+
+            self.send_response(http.HTTPStatus.OK)
+            self.send_header("Content-type", mimetype)
+            self.send_header("Content-Length", str(os.path.getsize(abs_file_path)))
+            # 强烈建议为静态文件添加缓存头，提高客户端加载速度
+            self.send_header('Cache-Control', 'public, max-age=31536000') # 缓存一年
+            self.end_headers()
+
+            # 以二进制模式读取文件并写入响应体
+            with open(abs_file_path, 'rb') as f:
+                shutil.copyfileobj(f, self.wfile) # 高效地复制文件内容到响应流
+            return
+
+        except FileNotFoundError:
+            self.send_error(http.HTTPStatus.NOT_FOUND, "Static file not found.")
+        except PermissionError:
+            self.send_error(http.HTTPStatus.FORBIDDEN, "Permission denied to read static file.")
+        except Exception as e:
+            # 捕获其他未知错误
+            print(f"Error serving static file {requested_url_path}: {e}", file=sys.stderr)
+            self.send_error(http.HTTPStatus.INTERNAL_SERVER_ERROR, "Internal server error serving static file.")
+
+    # ==================== 结束新增方法 ====================
+
     def do_GET(self):
+        # ==================== 新增逻辑：优先处理 /style/ 静态文件请求 ====================
+        if self.path.startswith('/style/'):
+            self._serve_static_file(self.path)
+            return # 处理完静态文件后直接返回，不执行后续逻辑
+        # ==================== 结束新增逻辑 ====================
+        
         parsed_url = urllib.parse.urlparse(self.path)
         url_path = parsed_url.path
         try:
@@ -310,7 +389,6 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
 class ThreadedTCPServer(ThreadingMixIn, socketserver.TCPServer):
     pass
 
-
 if __name__ == "__main__":
     print("Feeds directory lister script is starting...")
     sys.stdout.flush()
@@ -322,6 +400,14 @@ if __name__ == "__main__":
         sys.stdout.flush()
         sys.exit(1)
 
+    # ==================== 新增：检查 STATIC_ASSETS_DIR ====================
+    # 确保静态文件目录也存在，否则静态文件无法被服务
+    if not os.path.isdir(STATIC_ASSETS_DIR):
+        print(f"Warning: Static assets directory not found or not accessible: {STATIC_ASSETS_DIR}", file=sys.stderr)
+        # 可以选择退出或继续，这里我们选择警告并继续，因为可能有些部署不需要静态文件
+        sys.stdout.flush()
+    # ==================== 结束新增 ====================
+    
     print(f"Attempting to start server on port {LISTEN_PORT}")
     sys.stdout.flush()
     print(f"Serving content from file root: {FILE_SERVER_ROOT}")
