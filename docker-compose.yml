@@ -14,7 +14,6 @@ services:
       - /path/to/your/data:/feeds_data
 
     environment:
-      - FILE_SERVER_ROOT=/feeds_data
       - TZ=Asia/Shanghai
 
     healthcheck:
