@@ -7,6 +7,7 @@ import os
 import urllib.parse
 import html
 import sys
+import json
 import mimetypes
 import datetime
 import time
@@ -20,26 +21,41 @@ FILE_SERVER_ROOT = os.environ.get('FILE_SERVER_ROOT', '/feeds_data')
 STATIC_ASSETS_DIR = "/style"
 CSS_URL = "/style/main.css"
 
-DOMAIN_FOOTER_INFO = {
-    "sh-mtgc.com": {
-        "icp_text": "沪ICP备2024068389号-2",
-        "icp_url": "https://beian.miit.gov.cn/",
-        "mps_text": "",
-        "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=_sh-mtgc.com_代码"
-    },
-    "onenas.space": {
-        "icp_text": "沪ICP备2025124234号-2",
-        "icp_url": "https://beian.miit.gov.cn/",
-        "mps_text": "沪公网安备31011002007335号",
-        "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=31011002007335"
-    },
-    "onenas.fun": {
-        "icp_text": "沪ICP备2025124234号-1",
-        "icp_url": "https://beian.miit.gov.cn/",
-        "mps_text": "沪公网安备31011002007335号",
-        "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=31011002007335"
-    }
-}
+# 从环境变量读取 JSON 配置
+DOMAIN_FOOTER_INFO_ENV = os.environ.get("DOMAIN_FOOTER_INFO_JSON", "")
+
+if DOMAIN_FOOTER_INFO_ENV.strip():
+    try:
+        DOMAIN_FOOTER_INFO = json.loads(DOMAIN_FOOTER_INFO_ENV)
+        if not isinstance(DOMAIN_FOOTER_INFO, dict):
+            raise ValueError("DOMAIN_FOOTER_INFO_JSON must be a JSON object")
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"[ERROR] Failed to parse DOMAIN_FOOTER_INFO_JSON: {e}", file=sys.stderr)
+        DOMAIN_FOOTER_INFO = {}
+else:
+    # 默认值（可选）
+    DOMAIN_FOOTER_INFO = {}
+    
+#DOMAIN_FOOTER_INFO = {
+#    "sh-mtgc.com": {
+#        "icp_text": "沪ICP备2024068389号-2",
+#        "icp_url": "https://beian.miit.gov.cn/",
+#        "mps_text": "",
+#        "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=_sh-mtgc.com_代码"
+#    },
+#    "onenas.space": {
+#        "icp_text": "沪ICP备2025124234号-2",
+#        "icp_url": "https://beian.miit.gov.cn/",
+#        "mps_text": "沪公网安备31011002007335号",
+#        "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=31011002007335"
+#    },
+#    "onenas.fun": {
+#        "icp_text": "沪ICP备2025124234号-1",
+#        "icp_url": "https://beian.miit.gov.cn/",
+#        "mps_text": "沪公网安备31011002007335号",
+#        "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=31011002007335"
+#    }
+#}
 
 
 def human_readable_size(size_bytes):
