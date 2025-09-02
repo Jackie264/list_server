@@ -15,7 +15,6 @@ import shutil
 import socket
 from socketserver import ThreadingMixIn
 
-
 LISTEN_PORT = 8001
 FILE_SERVER_ROOT = os.environ.get('FILE_SERVER_ROOT', '/feeds_data')
 STATIC_ASSETS_DIR = "/style"
@@ -35,28 +34,6 @@ if DOMAIN_FOOTER_INFO_ENV.strip():
 else:
     # 默认值（可选）
     DOMAIN_FOOTER_INFO = {}
-    
-#DOMAIN_FOOTER_INFO = {
-#    "sh-mtgc.com": {
-#        "icp_text": "沪ICP备2024068389号-2",
-#        "icp_url": "https://beian.miit.gov.cn/",
-#        "mps_text": "",
-#        "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=_sh-mtgc.com_代码"
-#    },
-#    "onenas.space": {
-#        "icp_text": "沪ICP备2025124234号-2",
-#        "icp_url": "https://beian.miit.gov.cn/",
-#        "mps_text": "沪公网安备31011002007335号",
-#        "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=31011002007335"
-#    },
-#    "onenas.fun": {
-#        "icp_text": "沪ICP备2025124234号-1",
-#        "icp_url": "https://beian.miit.gov.cn/",
-#        "mps_text": "沪公网安备31011002007335号",
-#        "mps_url": "https://beian.mps.gov.cn/#/query/webSearch?code=31011002007335"
-#    }
-#}
-
 
 def human_readable_size(size_bytes):
     if size_bytes is None:
