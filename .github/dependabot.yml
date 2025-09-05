@@ -1,6 +1,8 @@
 # Basic `dependabot.yml` file with
 # minimum configuration for three package managers
 
+./config.sh --labels dependabot
+
 version: 2
 updates:
   # Enable version updates for Docker
