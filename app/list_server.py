@@ -91,6 +91,7 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             abs_file_realpath = os.path.realpath(os.path.abspath(candidate_path))
 
             # --- 关键安全检查：只允许真实路径（包含 symlink 解析后）在静态根内部 ---
+            # Only allow access if the resolved file path is strictly under the static assets root.
             if os.path.commonpath([abs_static_realroot, abs_file_realpath]) != abs_static_realroot:
                 self.send_error(http.HTTPStatus.FORBIDDEN, "Access to requested path outside static assets directory is forbidden.")
                 return
@@ -104,10 +105,8 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             if os.path.islink(abs_file_realpath):
                 self.send_error(http.HTTPStatus.FORBIDDEN, "Symlinks are not allowed for static assets.")
                 return
-            # Re-resolve the path to ensure symlinks have not changed; redundant here as abs_file_realpath is already realpath
-            if not os.path.commonpath([abs_static_realroot, abs_file_realpath]) == abs_static_realroot:
-                self.send_error(http.HTTPStatus.FORBIDDEN, "Resolved file path escapes static assets directory (symlink attack blocked).")
-                return
+            # 安全检查已于上方完成，无需重复 commonpath 校验
+
             # 猜测文件的 MIME 类型
             mimetype, _ = mimetypes.guess_type(abs_file_realpath)
             if mimetype is None:
