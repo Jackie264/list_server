@@ -131,13 +131,13 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             safe_mimetype = mimetype.replace('\n', '').replace('\r', '').replace(':', '')
             self.send_response(http.HTTPStatus.OK)
             self.send_header("Content-type", safe_mimetype)
-            self.send_header("Content-Length", str(os.path.getsize(abs_file_path)))
+            self.send_header("Content-Length", str(os.path.getsize(abs_file_realpath)))
             # 强烈建议为静态文件添加缓存头，提高客户端加载速度
             self.send_header('Cache-Control', 'public, max-age=31536000') # 缓存一年
             self.end_headers()
 
             # 以二进制模式读取文件并写入响应体
-            with open(abs_file_path, 'rb') as f:
+            with open(abs_file_realpath, 'rb') as f:
                 shutil.copyfileobj(f, self.wfile) # 高效地复制文件内容到响应流
             return
 
