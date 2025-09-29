@@ -79,6 +79,10 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             # 对子路径进行 URL 解码和规范化，防止编码问题和路径异常
             decoded_sub_path = urllib.parse.unquote(sub_path, errors='surrogateescape')
             normalized_sub_path = os.path.normpath(decoded_sub_path)
+            # 额外检查：拒绝任何绝对路径
+            if os.path.isabs(normalized_sub_path):
+                self.send_error(http.HTTPStatus.BAD_REQUEST, "Absolute paths are not allowed.")
+                return
 
             # 构建容器内部的完整文件系统路径
             # os.path.join 会正确处理路径分隔符
@@ -101,7 +105,16 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             if not os.path.isfile(abs_file_path):
                 self.send_error(http.HTTPStatus.NOT_FOUND, "Static file not found.")
                 return
-
+            # 可选加强：禁止提供符号链接（防止 symlink 跳出目录）
+            if os.path.islink(abs_file_path):
+                self.send_error(http.HTTPStatus.FORBIDDEN, "Symlinks are not allowed for static assets.")
+                return
+            # 关键修正：确保文件真实路径仍在 STATIC_ASSETS_DIR 内部，防止 symlink escape
+            abs_static_realroot = os.path.realpath(STATIC_ASSETS_DIR)
+            abs_file_realpath = os.path.realpath(abs_file_path)
+            if not os.path.commonpath([abs_static_realroot, abs_file_realpath]) == abs_static_realroot:
+                self.send_error(http.HTTPStatus.FORBIDDEN, "Resolved file path escapes static assets directory (symlink attack blocked).")
+                return
             # 猜测文件的 MIME 类型
             mimetype, _ = mimetypes.guess_type(abs_file_path)
             if mimetype is None:
