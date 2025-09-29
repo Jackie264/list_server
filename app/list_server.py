@@ -87,13 +87,11 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             # 构建和规范化目标物理路径
             candidate_path = os.path.join(STATIC_ASSETS_DIR, normalized_sub_path)
             # 获取 STATIC_ASSETS_DIR 和候选文件的真实路径（解析 symlink）
-            abs_static_realroot = os.path.realpath(STATIC_ASSETS_DIR)
-            if not abs_static_realroot.endswith(os.sep):
-                abs_static_realroot = abs_static_realroot + os.sep  # Ensure trailing slash to prevent prefix tricks
-            abs_file_realpath = os.path.realpath(candidate_path)
+            abs_static_realroot = os.path.realpath(os.path.abspath(STATIC_ASSETS_DIR))
+            abs_file_realpath = os.path.realpath(os.path.abspath(candidate_path))
 
             # --- 关键安全检查：只允许真实路径（包含 symlink 解析后）在静态根内部 ---
-            if not os.path.commonpath([abs_static_realroot, abs_file_realpath]) == abs_static_realroot:
+            if os.path.commonpath([abs_static_realroot, abs_file_realpath]) != abs_static_realroot:
                 self.send_error(http.HTTPStatus.FORBIDDEN, "Access to requested path outside static assets directory is forbidden.")
                 return
             # --- 结束安全检查 ---
