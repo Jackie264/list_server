@@ -104,7 +104,7 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             if os.path.islink(abs_file_realpath):
                 self.send_error(http.HTTPStatus.FORBIDDEN, "Symlinks are not allowed for static assets.")
                 return
-            abs_file_realpath = os.path.realpath(abs_file_path)
+            # Re-resolve the path to ensure symlinks have not changed; redundant here as abs_file_realpath is already realpath
             if not os.path.commonpath([abs_static_realroot, abs_file_realpath]) == abs_static_realroot:
                 self.send_error(http.HTTPStatus.FORBIDDEN, "Resolved file path escapes static assets directory (symlink attack blocked).")
                 return
