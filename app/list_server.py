@@ -84,29 +84,15 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
                 self.send_error(http.HTTPStatus.BAD_REQUEST, "Absolute paths are not allowed.")
                 return
 
-            # 构建容器内部的完整文件系统路径
-            # os.path.join 会正确处理路径分隔符
-            physical_file_path = os.path.join(STATIC_ASSETS_DIR, normalized_sub_path)
+            # 构建和规范化目标物理路径
+            candidate_path = os.path.join(STATIC_ASSETS_DIR, normalized_sub_path)
+            # 获取 STATIC_ASSETS_DIR 和候选文件的真实路径（解析 symlink）
+            abs_static_realroot = os.path.realpath(STATIC_ASSETS_DIR)
+            abs_file_realpath = os.path.realpath(candidate_path)
 
-            # --- 关键安全检查：防止目录遍历攻击 ---
-            # 获取 STATIC_ASSETS_DIR 的绝对规范化路径
-            abs_static_root = os.path.abspath(STATIC_ASSETS_DIR)
-            # 获取请求文件路径的绝对规范化路径
-            abs_file_path = os.path.abspath(physical_file_path)
-
-            # Resolve symlinks (real paths) to enforce containment and prevent symlink escapes
-            abs_root_real = os.path.realpath(STATIC_ASSETS_DIR)
-            abs_file_realpath = os.path.realpath(abs_file_path)
-
-            # 确保请求的文件路径确实位于 STATIC_ASSETS_DIR 之下 (防止目录遍历)
-            # os.path.commonpath 返回两个或多个路径的最长公共子路径
-            if not os.path.commonpath([abs_static_root, abs_file_path]) == abs_static_root:
+            # --- 关键安全检查：只允许真实路径（包含 symlink 解析后）在静态根内部 ---
+            if not os.path.commonpath([abs_static_realroot, abs_file_realpath]) == abs_static_realroot:
                 self.send_error(http.HTTPStatus.FORBIDDEN, "Access to requested path outside static assets directory is forbidden.")
-                return
-
-            # 确保解析 symlink 后的路径仍然在 STATIC_ASSETS_DIR 内部，防止 symlink 跳出目录
-            if not os.path.commonpath([abs_root_real, abs_file_realpath]) == abs_root_real:
-                self.send_error(http.HTTPStatus.FORBIDDEN, "Access to requested path outside static assets directory (via symlink) is forbidden.")
                 return
             # --- 结束安全检查 ---
 
@@ -114,11 +100,10 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             if not os.path.isfile(abs_file_realpath):
                 self.send_error(http.HTTPStatus.NOT_FOUND, "Static file not found.")
                 return
-            # 可选加强：禁止提供符号链接（防止 symlink 跳出目录）
+            # 加强：禁止符号链接
             if os.path.islink(abs_file_realpath):
                 self.send_error(http.HTTPStatus.FORBIDDEN, "Symlinks are not allowed for static assets.")
                 return
-            abs_static_realroot = os.path.realpath(STATIC_ASSETS_DIR)
             abs_file_realpath = os.path.realpath(abs_file_path)
             if not os.path.commonpath([abs_static_realroot, abs_file_realpath]) == abs_static_realroot:
                 self.send_error(http.HTTPStatus.FORBIDDEN, "Resolved file path escapes static assets directory (symlink attack blocked).")
