@@ -1,7 +1,10 @@
 # .github/workflows/docker-build-push.yml
 
-name: Docker Build and Push
-
+name: 🚀 Build & Push Docker Image
+permissions:
+  contents: read
+  packages: write
+  
 on:
   push:
     branches:
@@ -28,20 +31,10 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and Push Docker Image
+      - name: 🛠️ Build and Push Docker Image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/feeds-lister:latest
-          # tags: |
-          #   ${{ secrets.DOCKERHUB_USERNAME }}/feeds-lister:latest
-          #   ${{ secrets.DOCKERHUB_USERNAME }}/feeds-lister:${{ github.sha }}
-          #   ${{ secrets.DOCKERHUB_USERNAME }}/feeds-lister:${{ github.ref_name }}
           no-cache: true
-
-          # file: ./path/to/your/Dockerfile
-
-      # - name: Verify Pushed Image (Optional)
-      #   run: |
-      #     echo "Image ${{ secrets.DOCKERHUB_USERNAME }}/feeds-lister:latest pushed successfully."
