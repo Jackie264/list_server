@@ -106,9 +106,10 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             mimetype, _ = mimetypes.guess_type(abs_file_path)
             if mimetype is None:
                 mimetype = 'application/octet-stream' # 如果无法猜测，使用通用二进制流
-
+            # Sanitize mimetype to remove CR, LF, colon to prevent HTTP response splitting
+            safe_mimetype = mimetype.replace('\n', '').replace('\r', '').replace(':', '')
             self.send_response(http.HTTPStatus.OK)
-            self.send_header("Content-type", mimetype)
+            self.send_header("Content-type", safe_mimetype)
             self.send_header("Content-Length", str(os.path.getsize(abs_file_path)))
             # 强烈建议为静态文件添加缓存头，提高客户端加载速度
             self.send_header('Cache-Control', 'public, max-age=31536000') # 缓存一年
