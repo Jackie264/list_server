@@ -88,6 +88,8 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             candidate_path = os.path.join(STATIC_ASSETS_DIR, normalized_sub_path)
             # 获取 STATIC_ASSETS_DIR 和候选文件的真实路径（解析 symlink）
             abs_static_realroot = os.path.realpath(STATIC_ASSETS_DIR)
+            if not abs_static_realroot.endswith(os.sep):
+                abs_static_realroot = abs_static_realroot + os.sep  # Ensure trailing slash to prevent prefix tricks
             abs_file_realpath = os.path.realpath(candidate_path)
 
             # --- 关键安全检查：只允许真实路径（包含 symlink 解析后）在静态根内部 ---
@@ -109,7 +111,7 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
                 self.send_error(http.HTTPStatus.FORBIDDEN, "Resolved file path escapes static assets directory (symlink attack blocked).")
                 return
             # 猜测文件的 MIME 类型
-            mimetype, _ = mimetypes.guess_type(abs_file_path)
+            mimetype, _ = mimetypes.guess_type(abs_file_realpath)
             if mimetype is None:
                 mimetype = 'application/octet-stream' # 如果无法猜测，使用通用二进制流
             # Sanitize mimetype to remove CR, LF, colon to prevent HTTP response splitting
