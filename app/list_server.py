@@ -17,6 +17,7 @@ from socketserver import ThreadingMixIn
 
 LISTEN_PORT = 8001
 FILE_SERVER_ROOT = os.environ.get('FILE_SERVER_ROOT', '/feeds_data')
+ABS_FILE_SERVER_ROOT = os.path.abspath(FILE_SERVER_ROOT)
 STATIC_ASSETS_DIR = "/style"
 CSS_URL = "/style/main.css"
 
@@ -153,13 +154,12 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             return
 
         try:
-            abs_root = os.path.abspath(FILE_SERVER_ROOT)
-            physical_path = os.path.normpath(os.path.join(abs_root, decoded_url_path.lstrip('/')))
+            physical_path = os.path.normpath(os.path.join(ABS_FILE_SERVER_ROOT, decoded_url_path.lstrip('/')))
         except Exception:
             self.send_error(http.HTTPStatus.INTERNAL_SERVER_ERROR, "Error processing path.")
             return
 
-        if not os.path.commonpath([abs_root, physical_path]) == abs_root:
+        if os.path.commonpath([ABS_FILE_SERVER_ROOT, physical_path]) != ABS_FILE_SERVER_ROOT:
             self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
             return
 
