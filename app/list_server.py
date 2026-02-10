@@ -147,10 +147,19 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
         validation fails.
         """
         try:
-            # Ensure the configured root directory exists and is usable.
-            abs_root = ABS_FILE_SERVER_ROOT
+            # Normalize and validate the configured root directory.
+            abs_root = os.path.realpath(os.path.abspath(ABS_FILE_SERVER_ROOT))
             if not abs_root or not os.path.isdir(abs_root):
                 # Misconfigured or non-existent root; treat as unsafe.
+                return None
+            # Reject obviously dangerous URL paths up front.
+            if not decoded_url_path:
+                return None
+            # Reject absolute paths such as "/etc/passwd" or "C:\\secret".
+            if os.path.isabs(decoded_url_path):
+                return None
+            # Reject Windows drive-qualified paths like "C:..." even if not reported as absolute.
+            if ':' in decoded_url_path.split('/', 1)[0].split('\\', 1)[0]:
                 return None
             # Always treat the URL path as relative to the configured root.
             # Strip leading slashes to avoid os.path.join ignoring the root.
@@ -167,6 +176,10 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
                 common = os.path.commonpath([abs_root, physical_path])
             except (ValueError, OSError):
                 # Different drives or invalid paths; treat as unsafe.
+            # Additional explicit prefix check for static analysis and defense in depth.
+            root_with_sep = abs_root if abs_root.endswith(os.sep) else abs_root + os.sep
+            if physical_path != abs_root and not physical_path.startswith(root_with_sep):
+                return None
                 return None
             if common != abs_root:
                 return None
