@@ -291,13 +291,23 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
 
         for name in filtered_items:
             item_physical_path = os.path.join(physical_path, name)
+            # Normalize and re-validate each item path to ensure it stays within the allowed root.
+            try:
+                abs_root = os.path.realpath(ABS_FILE_SERVER_ROOT)
+                resolved_item_path = os.path.realpath(item_physical_path)
+                if not (resolved_item_path == abs_root or resolved_item_path.startswith(abs_root + os.sep)):
+                    # Skip any entry that would escape the configured root directory.
+                    continue
+            except Exception:
+                # If we cannot safely resolve/verify the item path, skip it.
+                continue
 
             base_url_for_join = display_url_path if display_url_path.endswith('/') else display_url_path + '/'
             quoted_item_name = urllib.parse.quote(name, errors='surrogateescape')
             item_url_path = urllib.parse.urljoin(base_url_for_join, quoted_item_name)
 
             displayname = html.escape(name)
-            is_dir = os.path.isdir(item_physical_path)
+            is_dir = os.path.isdir(resolved_item_path)
             if is_dir:
                 displayname += "/"
                 if not item_url_path.endswith('/'):
@@ -305,7 +315,7 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
 
             stats = None
             try:
-                stats = os.stat(item_physical_path)
+                stats = os.stat(resolved_item_path)
             except OSError:
                 pass
 
