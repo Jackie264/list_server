@@ -223,9 +223,20 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
     def serve_directory_listing(self, physical_path, display_url_path):
         # Re-validate that the directory to be listed is within the configured root.
         try:
-            abs_root = os.path.realpath(ABS_FILE_SERVER_ROOT)
-            resolved_path = os.path.realpath(physical_path)
-            if not (resolved_path == abs_root or resolved_path.startswith(abs_root + os.sep)):
+            # Canonicalize the configured root directory and ensure it exists.
+            abs_root = os.path.realpath(os.path.abspath(FILE_SERVER_ROOT))
+            if not abs_root or not os.path.isdir(abs_root):
+                self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
+                return
+            # Resolve any symlinks in the provided physical_path.
+            resolved_path = os.path.realpath(os.path.abspath(physical_path))
+            # Ensure the resolved path is contained within abs_root.
+            try:
+                common = os.path.commonpath([abs_root, resolved_path])
+            except (ValueError, OSError):
+                self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
+                return
+            if common != abs_root:
                 self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
                 return
         except Exception:
