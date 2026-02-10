@@ -149,13 +149,18 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
         try:
             decoded_url_path = urllib.parse.unquote(url_path, errors='surrogateescape')
             decoded_url_path = os.path.normpath(decoded_url_path)
+            # Reject absolute paths or paths that attempt to traverse above the root.
+            if os.path.isabs(decoded_url_path) or decoded_url_path.startswith(os.pardir + os.sep) or decoded_url_path == os.pardir:
+                self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
+                return
         except Exception:
             self.send_error(http.HTTPStatus.BAD_REQUEST, "Bad path.")
             return
 
         try:
             # Build the physical path under the configured root and resolve it to a real absolute path.
-            candidate_path = os.path.join(ABS_FILE_SERVER_ROOT, decoded_url_path.lstrip('/'))
+            abs_root = os.path.realpath(ABS_FILE_SERVER_ROOT)
+            candidate_path = os.path.join(abs_root, decoded_url_path.lstrip('/'))
             physical_path = os.path.realpath(candidate_path)
         except Exception:
             self.send_error(http.HTTPStatus.INTERNAL_SERVER_ERROR, "Error processing path.")
@@ -163,8 +168,8 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
 
         try:
             # Ensure that the resolved path stays within the configured root directory.
-            abs_root = os.path.realpath(ABS_FILE_SERVER_ROOT)
-            if not (physical_path == abs_root or physical_path.startswith(abs_root + os.sep)):
+            common_root = os.path.commonpath([abs_root, physical_path])
+            if common_root != abs_root:
                 self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
                 return
         except Exception:
@@ -173,21 +178,12 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             return
 
         try:
-            # After validation, work with a normalized path relative to the configured root.
-            rel_path = os.path.relpath(physical_path, abs_root)
-            rel_path = os.path.normpath(rel_path)
-            # Reject any path that escapes the root or becomes absolute after normalization.
-            if rel_path.startswith(os.pardir + os.sep) or rel_path == os.pardir or os.path.isabs(rel_path):
-                self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
-                return
-            safe_physical_path = os.path.join(abs_root, rel_path)
-
-            if os.path.isdir(safe_physical_path):
-                self.serve_directory_listing(safe_physical_path, decoded_url_path)
-            elif os.path.isfile(safe_physical_path):
-                # Use the fully validated absolute path when serving a file.
-                self.serve_file(safe_physical_path)
-            elif os.path.exists(safe_physical_path):
+            # At this point, physical_path is a fully validated absolute path under abs_root.
+            if os.path.isdir(physical_path):
+                self.serve_directory_listing(physical_path, decoded_url_path)
+            elif os.path.isfile(physical_path):
+                self.serve_file(physical_path)
+            elif os.path.exists(physical_path):
                 self.send_error(http.HTTPStatus.NOT_FOUND, "Resource type not supported.")
             else:
                 self.send_error(http.HTTPStatus.NOT_FOUND, "Resource not found.")
