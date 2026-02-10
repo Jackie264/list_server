@@ -17,6 +17,8 @@ from socketserver import ThreadingMixIn
 
 LISTEN_PORT = 8001
 FILE_SERVER_ROOT = os.environ.get('FILE_SERVER_ROOT', '/feeds_data')
+# Canonical absolute path for the file server root; used for all path validation.
+ABS_FILE_SERVER_ROOT = os.path.realpath(os.path.abspath(FILE_SERVER_ROOT))
 ABS_FILE_SERVER_ROOT = os.path.abspath(FILE_SERVER_ROOT)
 STATIC_ASSETS_DIR = "/style"
 CSS_URL = "/style/main.css"
@@ -145,8 +147,8 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
         validation fails.
         """
         try:
-            # Canonicalize the configured root directory and ensure it exists.
-            abs_root = os.path.realpath(os.path.abspath(FILE_SERVER_ROOT))
+            # Ensure the configured root directory exists and is usable.
+            abs_root = ABS_FILE_SERVER_ROOT
             if not abs_root or not os.path.isdir(abs_root):
                 # Misconfigured or non-existent root; treat as unsafe.
                 return None
@@ -223,8 +225,8 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
     def serve_directory_listing(self, physical_path, display_url_path):
         # Re-validate that the directory to be listed is within the configured root.
         try:
-            # Canonicalize the configured root directory and ensure it exists.
-            abs_root = os.path.realpath(os.path.abspath(FILE_SERVER_ROOT))
+            # Use the canonical absolute root directory and ensure it exists.
+            abs_root = ABS_FILE_SERVER_ROOT
             if not abs_root or not os.path.isdir(abs_root):
                 self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
                 return
@@ -330,9 +332,13 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             item_physical_path = os.path.join(physical_path, name)
             # Normalize and re-validate each item path to ensure it stays within the allowed root.
             try:
-                abs_root = os.path.realpath(ABS_FILE_SERVER_ROOT)
-                resolved_item_path = os.path.realpath(item_physical_path)
-                if not (resolved_item_path == abs_root or resolved_item_path.startswith(abs_root + os.sep)):
+                resolved_item_path = os.path.realpath(os.path.abspath(item_physical_path))
+                try:
+                    common = os.path.commonpath([ABS_FILE_SERVER_ROOT, resolved_item_path])
+                except (ValueError, OSError):
+                    # Skip any entry that would escape or is invalid with respect to the configured root.
+                    continue
+                if common != ABS_FILE_SERVER_ROOT:
                     # Skip any entry that would escape the configured root directory.
                     continue
             except Exception:
