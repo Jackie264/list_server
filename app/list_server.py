@@ -13,6 +13,7 @@ import datetime
 import time
 import shutil
 import socket
+import http
 from socketserver import ThreadingMixIn
 
 LISTEN_PORT = 8001
@@ -174,14 +175,15 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             # Ensure the resolved path is contained within abs_root.
             try:
                 common = os.path.commonpath([abs_root, physical_path])
+                # Only allow paths whose common path with the root is exactly the root.
+                if common != abs_root:
+                    return None
             except (ValueError, OSError):
                 # Different drives or invalid paths; treat as unsafe.
+                return None
             # Additional explicit prefix check for static analysis and defense in depth.
             root_with_sep = abs_root if abs_root.endswith(os.sep) else abs_root + os.sep
             if physical_path != abs_root and not physical_path.startswith(root_with_sep):
-                return None
-                return None
-            if common != abs_root:
                 return None
             return physical_path
         except Exception:
