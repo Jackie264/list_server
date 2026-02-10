@@ -371,18 +371,25 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
 
     def serve_file(self, physical_path):
         try:
-            mimetype, _ = mimetypes.guess_type(physical_path)
+            # Resolve the path and ensure it stays within the configured root directory.
+            abs_root = os.path.realpath(ABS_FILE_SERVER_ROOT)
+            resolved_path = os.path.realpath(physical_path)
+            if not (resolved_path == abs_root or resolved_path.startswith(abs_root + os.sep)):
+                self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
+                return
+
+            mimetype, _ = mimetypes.guess_type(resolved_path)
             if mimetype is None:
                 mimetype = 'application/octet-stream'
 
-            file_size = os.path.getsize(physical_path)
+            file_size = os.path.getsize(resolved_path)
 
             self.send_response(http.HTTPStatus.OK)
             self.send_header("Content-type", mimetype)
             self.send_header("Content-Length", str(file_size))
             self.end_headers()
 
-            with open(physical_path, 'rb') as f:
+            with open(resolved_path, 'rb') as f:
                 shutil.copyfileobj(f, self.wfile)
 
         except FileNotFoundError:
