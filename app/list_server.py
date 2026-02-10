@@ -176,7 +176,9 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             if os.path.isdir(physical_path):
                 self.serve_directory_listing(physical_path, decoded_url_path)
             elif os.path.isfile(physical_path):
-                self.serve_file(physical_path)
+                # Compute a safe relative path under the configured root and pass that to serve_file.
+                rel_path = os.path.relpath(physical_path, ABS_FILE_SERVER_ROOT)
+                self.serve_file(rel_path)
             elif os.path.exists(physical_path):
                 self.send_error(http.HTTPStatus.NOT_FOUND, "Resource type not supported.")
             else:
@@ -369,11 +371,12 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded_html)
 
-    def serve_file(self, physical_path):
+    def serve_file(self, relative_path):
         try:
-            # Resolve the path and ensure it stays within the configured root directory.
+            # Resolve the path from the configured root directory and ensure it stays within that root.
             abs_root = os.path.realpath(ABS_FILE_SERVER_ROOT)
-            resolved_path = os.path.realpath(physical_path)
+            candidate_path = os.path.join(abs_root, relative_path)
+            resolved_path = os.path.realpath(candidate_path)
             if not (resolved_path == abs_root or resolved_path.startswith(abs_root + os.sep)):
                 self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
                 return
@@ -397,7 +400,7 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
         except PermissionError:
             self.send_error(http.HTTPStatus.FORBIDDEN, "Permission denied to read file.")
         except Exception as e:
-            print(f"Error serving file {physical_path}: {e}", file=sys.stderr)
+            print(f"Error serving file {relative_path}: {e}", file=sys.stderr)
             self.send_error(http.HTTPStatus.INTERNAL_SERVER_ERROR, "Internal server error.")
 
 
