@@ -145,9 +145,11 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
         validation fails.
         """
         try:
-            # Normalize and resolve the configured root directory once here to
-            # avoid relying on any external global normalization.
+            # Canonicalize the configured root directory and ensure it exists.
             abs_root = os.path.realpath(os.path.abspath(FILE_SERVER_ROOT))
+            if not abs_root or not os.path.isdir(abs_root):
+                # Misconfigured or non-existent root; treat as unsafe.
+                return None
             # Always treat the URL path as relative to the configured root.
             # Strip leading slashes to avoid os.path.join ignoring the root.
             relative_path = decoded_url_path.lstrip('/')
@@ -164,6 +166,7 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
                 common = os.path.commonpath([abs_root, physical_path])
             except (ValueError, OSError):
                 # Different drives or invalid paths; treat as unsafe.
+            # Only allow access to paths that are strictly under the configured root.
                 return None
             if common != abs_root:
                 return None
