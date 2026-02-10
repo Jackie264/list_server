@@ -175,20 +175,24 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             return None
 
     def do_GET(self):
-        # ==================== 新增逻辑：优先处理 /style/ 静态文件请求 ====================
-        if self.path.startswith('/style/'):
-            self._serve_static_file(self.path)
-            return # 处理完静态文件后直接返回，不执行后续逻辑
-        # ==================== 结束新增逻辑 ====================
-
         parsed_url = urllib.parse.urlparse(self.path)
         url_path = parsed_url.path
         try:
             decoded_url_path = urllib.parse.unquote(url_path, errors='surrogateescape')
-            decoded_url_path = os.path.normpath(decoded_url_path)
         except Exception:
             self.send_error(http.HTTPStatus.BAD_REQUEST, "Bad path.")
             return
+
+        # ==================== 新增逻辑：优先处理 /style/ 静态文件请求 ====================
+        if decoded_url_path.startswith('/style/'):
+            safe_physical_path = self._resolve_and_validate_path(decoded_url_path)
+            if safe_physical_path is None:
+                self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
+                return
+            # 使用经过验证的物理路径提供静态文件
+            self._serve_static_file(safe_physical_path)
+            return  # 处理完静态文件后直接返回，不执行后续逻辑
+        # ==================== 结束新增逻辑 ====================
 
         # Resolve and validate the requested path against the configured root.
         safe_physical_path = self._resolve_and_validate_path(decoded_url_path)
