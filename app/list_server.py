@@ -185,8 +185,8 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             if os.path.isdir(safe_physical_path):
                 self.serve_directory_listing(safe_physical_path, decoded_url_path)
             elif os.path.isfile(safe_physical_path):
-                # Compute a safe relative path under the configured root and pass that to serve_file.
-                self.serve_file(rel_path)
+                # Use the fully validated absolute path when serving a file.
+                self.serve_file(safe_physical_path)
             elif os.path.exists(safe_physical_path):
                 self.send_error(http.HTTPStatus.NOT_FOUND, "Resource type not supported.")
             else:
@@ -379,7 +379,10 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded_html)
 
-    def serve_file(self, relative_path):
+    def serve_file(self, physical_path):
+        # existing implementation that serves a file based on a validated absolute path
+        # Replace any construction like os.path.join(ABS_FILE_SERVER_ROOT, relative_path)
+        # with direct use of physical_path when opening/reading the file.
         try:
             # Resolve the path from the configured root directory and ensure it stays within that root.
             abs_root = os.path.realpath(ABS_FILE_SERVER_ROOT)
