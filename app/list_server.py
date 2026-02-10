@@ -174,8 +174,13 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
 
         try:
             # After validation, work with a normalized path relative to the configured root.
-            rel_path = os.path.relpath(physical_path, ABS_FILE_SERVER_ROOT)
-            safe_physical_path = os.path.join(ABS_FILE_SERVER_ROOT, rel_path)
+            rel_path = os.path.relpath(physical_path, abs_root)
+            rel_path = os.path.normpath(rel_path)
+            # Reject any path that escapes the root or becomes absolute after normalization.
+            if rel_path.startswith(os.pardir + os.sep) or rel_path == os.pardir or os.path.isabs(rel_path):
+                self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
+                return
+            safe_physical_path = os.path.join(abs_root, rel_path)
 
             if os.path.isdir(safe_physical_path):
                 self.serve_directory_listing(safe_physical_path, decoded_url_path)
