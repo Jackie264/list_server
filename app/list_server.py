@@ -173,16 +173,13 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             return
 
         try:
-            # After validation, work with a normalized path relative to the configured root.
-            rel_path = os.path.relpath(physical_path, abs_root)
-            rel_path = os.path.normpath(rel_path)
-            # Reject any path that escapes the root or becomes absolute after normalization.
-            if rel_path.startswith(os.pardir + os.sep) or rel_path == os.pardir or os.path.isabs(rel_path):
-                self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
-                return
-            safe_physical_path = os.path.join(abs_root, rel_path)
+            # At this point, physical_path has been resolved with os.path.realpath and
+            # verified to reside within abs_root. It is safe to use for filesystem access.
+            safe_physical_path = physical_path
 
             if os.path.isdir(safe_physical_path):
+                # decoded_url_path is only used for display; all filesystem access uses
+                # safe_physical_path, which has been validated against abs_root.
                 self.serve_directory_listing(safe_physical_path, decoded_url_path)
             elif os.path.isfile(safe_physical_path):
                 # Use the fully validated absolute path when serving a file.
