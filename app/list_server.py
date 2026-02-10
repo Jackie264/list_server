@@ -139,17 +139,23 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
 
     def _resolve_and_validate_path(self, decoded_url_path):
         """
-        Resolve a URL path to a filesystem path under ABS_FILE_SERVER_ROOT and
-        ensure that the resulting path does not escape the configured root.
-        Returns the validated absolute path, or None if validation fails.
+        Resolve a URL path to a filesystem path under the configured
+        FILE_SERVER_ROOT and ensure that the resulting path does not escape
+        the configured root. Returns the validated absolute path, or None if
+        validation fails.
         """
         try:
+            # Normalize and resolve the configured root directory once here to
+            # avoid relying on any external global normalization.
+            abs_root = os.path.realpath(os.path.abspath(FILE_SERVER_ROOT))
             # Always treat the URL path as relative to the configured root.
             # Strip leading slashes to avoid os.path.join ignoring the root.
             relative_path = decoded_url_path.lstrip('/')
-            candidate_path = os.path.join(ABS_FILE_SERVER_ROOT, relative_path)
-            # Normalize and resolve any symlinks in both the root and candidate.
-            abs_root = os.path.realpath(ABS_FILE_SERVER_ROOT)
+            # Optionally reject empty paths early (e.g., requests for just "/").
+            if not relative_path:
+                return None
+            candidate_path = os.path.join(abs_root, relative_path)
+            # Normalize and resolve any symlinks in the candidate path.
             physical_path = os.path.realpath(candidate_path)
             # Ensure the resolved path is absolute and contained within abs_root.
             if not os.path.isabs(physical_path):
