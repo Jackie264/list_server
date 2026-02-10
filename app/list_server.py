@@ -195,8 +195,21 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             self.send_error(http.HTTPStatus.INTERNAL_SERVER_ERROR, "Internal server error.")
 
     def serve_directory_listing(self, physical_path, display_url_path):
+        # Re-validate that the directory to be listed is within the configured root.
         try:
-            items = os.listdir(physical_path)
+            abs_root = os.path.realpath(ABS_FILE_SERVER_ROOT)
+            resolved_path = os.path.realpath(physical_path)
+            if not (resolved_path == abs_root or resolved_path.startswith(abs_root + os.sep)):
+                self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
+                return
+        except Exception:
+            # If we cannot safely verify the path, deny access.
+            self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
+            return
+
+        try:
+            # Use the resolved, validated path when accessing the filesystem.
+            items = os.listdir(resolved_path)
             filtered_items = [
                 name for name in items
                 if not name.startswith('.')
