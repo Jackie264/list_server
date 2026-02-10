@@ -154,20 +154,21 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             return
 
         try:
-            physical_path = os.path.normpath(os.path.join(ABS_FILE_SERVER_ROOT, decoded_url_path.lstrip('/')))
+            # Build the physical path under the configured root and resolve it to a real absolute path.
+            candidate_path = os.path.join(ABS_FILE_SERVER_ROOT, decoded_url_path.lstrip('/'))
+            physical_path = os.path.realpath(candidate_path)
         except Exception:
             self.send_error(http.HTTPStatus.INTERNAL_SERVER_ERROR, "Error processing path.")
             return
 
         try:
             # Ensure that the resolved path stays within the configured root directory.
-            relpath = os.path.relpath(physical_path, ABS_FILE_SERVER_ROOT)
-            # Any path that starts with '..' would escape the root directory.
-            if relpath == os.pardir or relpath.startswith(os.pardir + os.sep):
+            abs_root = os.path.realpath(ABS_FILE_SERVER_ROOT)
+            if not (physical_path == abs_root or physical_path.startswith(abs_root + os.sep)):
                 self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
                 return
         except Exception:
-            # If we cannot safely compute a relative path, deny access.
+            # If we cannot safely verify the path, deny access.
             self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
             return
 
