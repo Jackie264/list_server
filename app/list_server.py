@@ -144,10 +144,22 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
         Returns the validated absolute path, or None if validation fails.
         """
         try:
-            candidate_path = os.path.join(ABS_FILE_SERVER_ROOT, decoded_url_path.lstrip('/'))
-            physical_path = os.path.realpath(candidate_path)
+            # Always treat the URL path as relative to the configured root.
+            # Strip leading slashes to avoid os.path.join ignoring the root.
+            relative_path = decoded_url_path.lstrip('/')
+            candidate_path = os.path.join(ABS_FILE_SERVER_ROOT, relative_path)
+            # Normalize and resolve any symlinks in both the root and candidate.
             abs_root = os.path.realpath(ABS_FILE_SERVER_ROOT)
-            if not (physical_path == abs_root or physical_path.startswith(abs_root + os.sep)):
+            physical_path = os.path.realpath(candidate_path)
+            # Ensure the resolved path is absolute and contained within abs_root.
+            if not os.path.isabs(physical_path):
+                return None
+            try:
+                common = os.path.commonpath([abs_root, physical_path])
+            except (ValueError, OSError):
+                # Different drives or invalid paths; treat as unsafe.
+                return None
+            if common != abs_root:
                 return None
             return physical_path
         except Exception:
