@@ -173,13 +173,16 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             return
 
         try:
-            if os.path.isdir(physical_path):
-                self.serve_directory_listing(physical_path, decoded_url_path)
-            elif os.path.isfile(physical_path):
+            # After validation, work with a normalized path relative to the configured root.
+            rel_path = os.path.relpath(physical_path, ABS_FILE_SERVER_ROOT)
+            safe_physical_path = os.path.join(ABS_FILE_SERVER_ROOT, rel_path)
+
+            if os.path.isdir(safe_physical_path):
+                self.serve_directory_listing(safe_physical_path, decoded_url_path)
+            elif os.path.isfile(safe_physical_path):
                 # Compute a safe relative path under the configured root and pass that to serve_file.
-                rel_path = os.path.relpath(physical_path, ABS_FILE_SERVER_ROOT)
                 self.serve_file(rel_path)
-            elif os.path.exists(physical_path):
+            elif os.path.exists(safe_physical_path):
                 self.send_error(http.HTTPStatus.NOT_FOUND, "Resource type not supported.")
             else:
                 self.send_error(http.HTTPStatus.NOT_FOUND, "Resource not found.")
