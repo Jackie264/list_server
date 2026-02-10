@@ -158,7 +158,7 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
                 return None
             candidate_path = os.path.join(abs_root, relative_path)
             # Normalize and resolve any symlinks in the candidate path.
-            physical_path = os.path.realpath(candidate_path)
+            physical_path = os.path.realpath(os.path.abspath(candidate_path))
             # Ensure the resolved path is absolute and contained within abs_root.
             if not os.path.isabs(physical_path):
                 return None
@@ -166,9 +166,13 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
                 common = os.path.commonpath([abs_root, physical_path])
             except (ValueError, OSError):
                 # Different drives or invalid paths; treat as unsafe.
-            # Only allow access to paths that are strictly under the configured root.
                 return None
+            # Only allow access to paths that are strictly under the configured root.
             if common != abs_root:
+                return None
+            # Additionally ensure that physical_path is either exactly the root
+            # directory or a descendant of it, to avoid prefix-matching issues.
+            if physical_path != abs_root and not physical_path.startswith(abs_root + os.sep):
                 return None
             return physical_path
         except Exception:
