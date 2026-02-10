@@ -159,7 +159,15 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             self.send_error(http.HTTPStatus.INTERNAL_SERVER_ERROR, "Error processing path.")
             return
 
-        if os.path.commonpath([ABS_FILE_SERVER_ROOT, physical_path]) != ABS_FILE_SERVER_ROOT:
+        try:
+            # Ensure that the resolved path stays within the configured root directory.
+            relpath = os.path.relpath(physical_path, ABS_FILE_SERVER_ROOT)
+            # Any path that starts with '..' would escape the root directory.
+            if relpath == os.pardir or relpath.startswith(os.pardir + os.sep):
+                self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
+                return
+        except Exception:
+            # If we cannot safely compute a relative path, deny access.
             self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
             return
 
