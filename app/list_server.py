@@ -13,13 +13,10 @@ import datetime
 import time
 import shutil
 import socket
-import http
 from socketserver import ThreadingMixIn
 
 LISTEN_PORT = 8001
 FILE_SERVER_ROOT = os.environ.get('FILE_SERVER_ROOT', '/feeds_data')
-# Canonical absolute path for the file server root; used for all path validation.
-ABS_FILE_SERVER_ROOT = os.path.realpath(os.path.abspath(FILE_SERVER_ROOT))
 ABS_FILE_SERVER_ROOT = os.path.abspath(FILE_SERVER_ROOT)
 STATIC_ASSETS_DIR = "/style"
 CSS_URL = "/style/main.css"
@@ -140,130 +137,50 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
 
     # ==================== 结束新增方法 ====================
 
-    def _resolve_and_validate_path(self, decoded_url_path):
-        """
-        Resolve a URL path to a filesystem path under the configured
-        FILE_SERVER_ROOT and ensure that the resulting path does not escape
-        the configured root. Returns the validated absolute path, or None if
-        validation fails.
-        """
-        try:
-            # Normalize and validate the configured root directory.
-            abs_root = os.path.realpath(os.path.abspath(ABS_FILE_SERVER_ROOT))
-            if not abs_root or not os.path.isdir(abs_root):
-                # Misconfigured or non-existent root; treat as unsafe.
-                return None
-            # Reject obviously dangerous URL paths up front.
-            if not decoded_url_path:
-                return None
-            # Reject absolute paths such as "/etc/passwd" or "C:\\secret".
-            if os.path.isabs(decoded_url_path):
-                return None
-            # Reject Windows drive-qualified paths like "C:..." even if not reported as absolute.
-            if ':' in decoded_url_path.split('/', 1)[0].split('\\', 1)[0]:
-                return None
-            # Always treat the URL path as relative to the configured root.
-            # Strip leading slashes to avoid os.path.join ignoring the root.
-            relative_path = decoded_url_path.lstrip('/')
-            # Reject empty paths early (e.g., requests for just "/").
-            if not relative_path:
-                return None
-            # Build a candidate path under the configured root.
-            candidate_path = os.path.join(abs_root, relative_path)
-            # Normalize and resolve any symlinks in the candidate path.
-            physical_path = os.path.realpath(os.path.abspath(candidate_path))
-            # Ensure the resolved path is contained within abs_root.
-            try:
-                common = os.path.commonpath([abs_root, physical_path])
-                # Only allow paths whose common path with the root is exactly the root.
-                if common != abs_root:
-                    return None
-            except (ValueError, OSError):
-                # Different drives or invalid paths; treat as unsafe.
-                return None
-            # Additional explicit prefix check for static analysis and defense in depth.
-            root_with_sep = abs_root if abs_root.endswith(os.sep) else abs_root + os.sep
-            if physical_path != abs_root and not physical_path.startswith(root_with_sep):
-                return None
-            return physical_path
-        except Exception:
-            # On any unexpected error, fail closed.
-            return None
-
     def do_GET(self):
+        # ==================== 新增逻辑：优先处理 /style/ 静态文件请求 ====================
+        if self.path.startswith('/style/'):
+            self._serve_static_file(self.path)
+            return # 处理完静态文件后直接返回，不执行后续逻辑
+        # ==================== 结束新增逻辑 ====================
+        
         parsed_url = urllib.parse.urlparse(self.path)
         url_path = parsed_url.path
         try:
             decoded_url_path = urllib.parse.unquote(url_path, errors='surrogateescape')
+            decoded_url_path = os.path.normpath(decoded_url_path)
         except Exception:
             self.send_error(http.HTTPStatus.BAD_REQUEST, "Bad path.")
             return
 
-        # ==================== 新增逻辑：优先处理 /style/ 静态文件请求 ====================
-        if decoded_url_path.startswith('/style/'):
-            safe_physical_path = self._resolve_and_validate_path(decoded_url_path)
-            if safe_physical_path is None:
-                self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
-                return
-            # 使用经过验证的物理路径提供静态文件
-            self._serve_static_file(safe_physical_path)
-            return  # 处理完静态文件后直接返回，不执行后续逻辑
-        # ==================== 结束新增逻辑 ====================
+        try:
+            physical_path = os.path.normpath(os.path.join(ABS_FILE_SERVER_ROOT, decoded_url_path.lstrip('/')))
+        except Exception:
+            self.send_error(http.HTTPStatus.INTERNAL_SERVER_ERROR, "Error processing path.")
+            return
 
-        # Resolve and validate the requested path against the configured root.
-        safe_physical_path = self._resolve_and_validate_path(decoded_url_path)
-        if safe_physical_path is None:
-            # If we cannot safely verify or resolve the path within the root, deny access.
+        if os.path.commonpath([ABS_FILE_SERVER_ROOT, physical_path]) != ABS_FILE_SERVER_ROOT:
             self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
             return
 
         try:
-            # At this point, safe_physical_path has been resolved with os.path.realpath and
-            # verified to reside within the configured root. It is safe to use for filesystem access.
-            if os.path.isdir(safe_physical_path):
-                # decoded_url_path is only used for display; all filesystem access uses
-                # safe_physical_path, which has been validated against abs_root.
-                self.serve_directory_listing(safe_physical_path, decoded_url_path)
-            elif os.path.isfile(safe_physical_path):
-                # Use the fully validated absolute path when serving a file.
-                self.serve_file(safe_physical_path)
-            elif os.path.exists(safe_physical_path):
+            if os.path.isdir(physical_path):
+                self.serve_directory_listing(physical_path, decoded_url_path)
+            elif os.path.isfile(physical_path):
+                self.serve_file(physical_path)
+            elif os.path.exists(physical_path):
                 self.send_error(http.HTTPStatus.NOT_FOUND, "Resource type not supported.")
             else:
                 self.send_error(http.HTTPStatus.NOT_FOUND, "Resource not found.")
         except PermissionError:
             self.send_error(http.HTTPStatus.FORBIDDEN, "Permission denied.")
         except Exception as e:
-            print(f"Unexpected error processing path {safe_physical_path}: {e}", file=sys.stderr)
+            print(f"Unexpected error processing path {physical_path}: {e}", file=sys.stderr)
             self.send_error(http.HTTPStatus.INTERNAL_SERVER_ERROR, "Internal server error.")
 
     def serve_directory_listing(self, physical_path, display_url_path):
-        # Re-validate that the directory to be listed is within the configured root.
         try:
-            # Use the canonical absolute root directory and ensure it exists.
-            abs_root = ABS_FILE_SERVER_ROOT
-            if not abs_root or not os.path.isdir(abs_root):
-                self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
-                return
-            # Resolve any symlinks in the provided physical_path.
-            resolved_path = os.path.realpath(os.path.abspath(physical_path))
-            # Ensure the resolved path is contained within abs_root.
-            try:
-                common = os.path.commonpath([abs_root, resolved_path])
-            except (ValueError, OSError):
-                self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
-                return
-            if common != abs_root:
-                self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
-                return
-        except Exception:
-            # If we cannot safely verify the path, deny access.
-            self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
-            return
-
-        try:
-            # Use the resolved, validated path when accessing the filesystem.
-            items = os.listdir(resolved_path)
+            items = os.listdir(physical_path)
             filtered_items = [
                 name for name in items
                 if not name.startswith('.')
@@ -345,27 +262,13 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
 
         for name in filtered_items:
             item_physical_path = os.path.join(physical_path, name)
-            # Normalize and re-validate each item path to ensure it stays within the allowed root.
-            try:
-                resolved_item_path = os.path.realpath(os.path.abspath(item_physical_path))
-                try:
-                    common = os.path.commonpath([ABS_FILE_SERVER_ROOT, resolved_item_path])
-                except (ValueError, OSError):
-                    # Skip any entry that would escape or is invalid with respect to the configured root.
-                    continue
-                if common != ABS_FILE_SERVER_ROOT:
-                    # Skip any entry that would escape the configured root directory.
-                    continue
-            except Exception:
-                # If we cannot safely resolve/verify the item path, skip it.
-                continue
 
             base_url_for_join = display_url_path if display_url_path.endswith('/') else display_url_path + '/'
             quoted_item_name = urllib.parse.quote(name, errors='surrogateescape')
             item_url_path = urllib.parse.urljoin(base_url_for_join, quoted_item_name)
 
             displayname = html.escape(name)
-            is_dir = os.path.isdir(resolved_item_path)
+            is_dir = os.path.isdir(item_physical_path)
             if is_dir:
                 displayname += "/"
                 if not item_url_path.endswith('/'):
@@ -373,7 +276,7 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
 
             stats = None
             try:
-                stats = os.stat(resolved_item_path)
+                stats = os.stat(item_physical_path)
             except OSError:
                 pass
 
@@ -458,30 +361,19 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(encoded_html)
 
     def serve_file(self, physical_path):
-        # existing implementation that serves a file based on a validated absolute path
-        # Replace any construction like os.path.join(ABS_FILE_SERVER_ROOT, relative_path)
-        # with direct use of physical_path when opening/reading the file.
         try:
-            # Resolve the path from the configured root directory and ensure it stays within that root.
-            abs_root = os.path.realpath(ABS_FILE_SERVER_ROOT)
-            candidate_path = os.path.join(abs_root, relative_path)
-            resolved_path = os.path.realpath(candidate_path)
-            if not (resolved_path == abs_root or resolved_path.startswith(abs_root + os.sep)):
-                self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
-                return
-
-            mimetype, _ = mimetypes.guess_type(resolved_path)
+            mimetype, _ = mimetypes.guess_type(physical_path)
             if mimetype is None:
                 mimetype = 'application/octet-stream'
 
-            file_size = os.path.getsize(resolved_path)
+            file_size = os.path.getsize(physical_path)
 
             self.send_response(http.HTTPStatus.OK)
             self.send_header("Content-type", mimetype)
             self.send_header("Content-Length", str(file_size))
             self.end_headers()
 
-            with open(resolved_path, 'rb') as f:
+            with open(physical_path, 'rb') as f:
                 shutil.copyfileobj(f, self.wfile)
 
         except FileNotFoundError:
@@ -489,7 +381,7 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
         except PermissionError:
             self.send_error(http.HTTPStatus.FORBIDDEN, "Permission denied to read file.")
         except Exception as e:
-            print(f"Error serving file {relative_path}: {e}", file=sys.stderr)
+            print(f"Error serving file {physical_path}: {e}", file=sys.stderr)
             self.send_error(http.HTTPStatus.INTERNAL_SERVER_ERROR, "Internal server error.")
 
 
