@@ -90,38 +90,30 @@ def resolve_safe_path(requested_url_path_normalized):
     并确保解析软链接之后的真实路径仍然落在 ALLOWED_REAL_ROOTS 中的
     某一个受信任根目录之下。
 
-    这里做了两层校验：
-      1. 直接对拼接/规范化后的路径调用 `.startswith()`，对照
-         CodeQL 官方 py/path-injection 文档给出的推荐写法
-         （https://codeql.github.com/codeql-query-help/python/py-path-injection/）。
-         注意 `.startswith()` 单独使用有经典的前缀碰瓷问题
-         （例如 "/feeds_data_evil" 会被误判为在 "/feeds_data" 之下），
-         所以这里额外拼上 os.sep 再比较。
-      2. 在字符串校验通过之后，再用 os.path.realpath() 解析所有软链接
-         （包括多层嵌套的软链接），校验解析结果是否落在允许的根目录集合内。
-         这一步才是本项目真正的安全关键点：第 1 层的字符串校验本身
-         无法发现"看起来在根目录内、但软链接实际指向别处"的情况。
-
     返回解析后的真实物理路径；如果校验失败，返回 None。
     """
     try:
         candidate = os.path.normpath(
             os.path.join(ABS_FILE_SERVER_ROOT, requested_url_path_normalized.lstrip('/'))
         )
+        real_candidate = os.path.realpath(candidate)
     except Exception:
         return None
 
-    # 第一层：对拼接后的字符串路径做 startswith 校验（含分隔符，避免前缀碰瓷）
-    root_with_sep = ABS_FILE_SERVER_ROOT + os.sep
-    if not (candidate == ABS_FILE_SERVER_ROOT or candidate.startswith(root_with_sep)):
+    # 使用 commonpath 做目录包含关系校验，避免字符串前缀比较误判
+    try:
+        if os.path.commonpath([ABS_FILE_SERVER_ROOT, candidate]) != ABS_FILE_SERVER_ROOT:
+            return None
+    except ValueError:
         return None
 
-    # 第二层：解析所有软链接后的真实路径，必须落在允许的根目录集合内
-    real_candidate = os.path.realpath(candidate)
+    # 解析软链接后的真实路径必须位于允许的真实根目录集合内
     for allowed_root in ALLOWED_REAL_ROOTS:
-        allowed_root_with_sep = allowed_root + os.sep
-        if real_candidate == allowed_root or real_candidate.startswith(allowed_root_with_sep):
-            return real_candidate
+        try:
+            if os.path.commonpath([allowed_root, real_candidate]) == allowed_root:
+                return real_candidate
+        except ValueError:
+            continue
 
     return None
 
