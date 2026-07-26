@@ -92,19 +92,26 @@ def resolve_safe_path(requested_url_path_normalized):
 
     返回解析后的真实物理路径；如果校验失败，返回 None。
     """
+    if not isinstance(requested_url_path_normalized, str):
+        return None
+
     try:
-        candidate = os.path.normpath(
-            os.path.join(ABS_FILE_SERVER_ROOT, requested_url_path_normalized.lstrip('/'))
-        )
-        real_candidate = os.path.realpath(candidate)
+        # 强制按“绝对 URL 路径”语义归一化，再转为相对路径，避免绝对路径覆盖 join 基路径
+        safe_rel = os.path.normpath('/' + requested_url_path_normalized).lstrip('/')
+        candidate = os.path.abspath(os.path.join(ABS_FILE_SERVER_ROOT, safe_rel))
     except Exception:
         return None
 
-    # 使用 commonpath 做目录包含关系校验，避免字符串前缀比较误判
+    # candidate 必须位于 FILE_SERVER_ROOT 之下
     try:
         if os.path.commonpath([ABS_FILE_SERVER_ROOT, candidate]) != ABS_FILE_SERVER_ROOT:
             return None
     except ValueError:
+        return None
+
+    try:
+        real_candidate = os.path.realpath(candidate)
+    except Exception:
         return None
 
     # 解析软链接后的真实路径必须位于允许的真实根目录集合内
