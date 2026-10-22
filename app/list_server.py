@@ -216,7 +216,11 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
 
             # --- 第一层安全检查：字符串前缀校验（加 os.sep 避免 "/style_evil" 碰瓷） ---
             static_root_with_sep = STATIC_ASSETS_DIR + os.sep
-            if not (candidate_path == STATIC_ASSETS_DIR or candidate_path.startswith(static_root_with_sep)):
+            # 注意：这里刻意只用单个 startswith，不要写成 "a == root or a.startswith(...)"。
+            # CodeQL 的 py/path-injection 只认“归一化后 + 单独的 startswith 守卫”，
+            # 带 or 的复合条件无法被识别为净化，会产生误报。
+            # 也不需要允许 candidate_path == STATIC_ASSETS_DIR：目录本身不是可服务的文件。
+            if not candidate_path.startswith(static_root_with_sep):
                 self.send_error(http.HTTPStatus.FORBIDDEN, "Access to requested path outside static assets directory is forbidden.")
                 return
 
@@ -224,7 +228,8 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             abs_static_realroot = os.path.realpath(os.path.abspath(STATIC_ASSETS_DIR))
             abs_file_realpath = os.path.realpath(os.path.abspath(candidate_path))
             static_realroot_with_sep = abs_static_realroot + os.sep
-            if not (abs_file_realpath == abs_static_realroot or abs_file_realpath.startswith(static_realroot_with_sep)):
+            # 同上：单独的 startswith 守卫，且检查的就是下面 open() 实际使用的变量。
+            if not abs_file_realpath.startswith(static_realroot_with_sep):
                 self.send_error(http.HTTPStatus.FORBIDDEN, "Access to requested path outside static assets directory is forbidden.")
                 return
 
