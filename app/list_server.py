@@ -164,15 +164,22 @@ def resolve_safe_path(requested_url_path_normalized):
     except Exception:
         return None
 
-    # 解析软链接后的真实路径必须位于允许的真实根目录集合内
-    if not is_within_allowed_roots(real_candidate):
-        return None
+    # 解析软链接后的真实路径必须位于允许的真实根目录集合内。
+    #
+    # 写法说明（为了让 CodeQL py/path-injection 能识别为净化）：
+    #   - 对 realpath 之后的同一个变量做单独的 startswith 判断；
+    #   - 只在判断为真的分支里 return 该变量，不使用 any()/辅助函数/or 组合条件；
+    #   - 路径恰好等于根目录本身时，返回根目录常量，而不是用户派生的值。
+    for allowed_root in ALLOWED_REAL_ROOTS:
+        if real_candidate == allowed_root:
+            return allowed_root
+        if real_candidate.startswith(allowed_root.rstrip(os.sep) + os.sep):
+            # 软链接指向 xxx.pem / .xxx 的情况：按最终真实文件名再检查一次
+            if is_hidden_name(os.path.basename(real_candidate)):
+                return None
+            return real_candidate
 
-    # 软链接指向 xxx.pem / .xxx 的情况：按最终真实文件名再检查一次
-    if real_candidate not in ALLOWED_REAL_ROOTS and is_hidden_name(os.path.basename(real_candidate)):
-        return None
-
-    return real_candidate
+    return None
 
 
 class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
