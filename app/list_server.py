@@ -4,13 +4,13 @@
 import http.server
 import socketserver
 import os
+import stat
 import urllib.parse
 import html
 import sys
 import json
 import mimetypes
 import datetime
-import time
 import shutil
 import socket
 from socketserver import ThreadingMixIn
@@ -20,6 +20,26 @@ FILE_SERVER_ROOT = os.environ.get('FILE_SERVER_ROOT', '/feeds_data')
 ABS_FILE_SERVER_ROOT = os.path.abspath(FILE_SERVER_ROOT)
 STATIC_ASSETS_DIR = "/style"
 CSS_URL = "/style/main.css"
+
+# ==================== 隐藏/拒绝访问规则 ====================
+# 1. 以 "." 开头的文件/目录（.env、.git、.htpasswd ……）：列表隐藏 + 直接访问也拒绝
+# 2. 以指定后缀结尾的文件（默认 .pem）：列表隐藏 + 直接访问也拒绝
+#    可通过环境变量 FILE_SERVER_HIDDEN_SUFFIXES 自定义，逗号分隔，
+#    例如 ".pem,.key,.crt"；设置为空字符串则不隐藏任何后缀。
+_hidden_suffixes_env = os.environ.get("FILE_SERVER_HIDDEN_SUFFIXES", ".pem")
+HIDDEN_SUFFIXES = tuple(
+    s.strip().lower() for s in _hidden_suffixes_env.split(",") if s.strip()
+)
+
+
+def is_hidden_name(name):
+    """单个文件名/目录名是否应当被隐藏（并拒绝访问）。大小写不敏感。"""
+    if not name:
+        return False
+    if name.startswith('.'):
+        return True
+    return bool(HIDDEN_SUFFIXES) and name.lower().endswith(HIDDEN_SUFFIXES)
+# ==================== 结束 隐藏规则 ====================
 
 # ==================== symlink 安全边界配置 ====================
 # 我们仍然允许 FILE_SERVER_ROOT 下存在软链接（包括指向根目录之外的软链接），
@@ -60,6 +80,20 @@ else:
     # 默认值（可选）
     DOMAIN_FOOTER_INFO = {}
 
+# 目录列表页的内容安全策略：页面本身没有内联脚本/样式，全部来自同源 /style/
+# （备案图标来自 beian.mps.gov.cn）
+LISTING_CSP = (
+    "default-src 'none'; "
+    "script-src 'self'; "
+    "style-src 'self'; "
+    "img-src 'self' https://beian.mps.gov.cn data:; "
+    "base-uri 'none'; "
+    "form-action 'none'; "
+    "frame-ancestors 'none'"
+)
+
+CONNECTION_ERRORS = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, socket.timeout)
+
 
 def human_readable_size(size_bytes):
     if size_bytes is None:
@@ -80,19 +114,30 @@ def format_mtime(timestamp):
         return "-"
     try:
         return datetime.datetime.fromtimestamp(timestamp).strftime("%a %b %d %H:%M:%S %Y")
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, OverflowError, OSError):
         return "-"
+
+
+def is_within_allowed_roots(real_path):
+    for allowed_root in ALLOWED_REAL_ROOTS:
+        if real_path == allowed_root or real_path.startswith(allowed_root.rstrip(os.sep) + os.sep):
+            return True
+    return False
 
 
 def resolve_safe_path(requested_url_path_normalized):
     """
     将（已经过 normpath 处理的）URL 路径解析为服务器上的真实物理路径，
-    并确保解析软链接之后的真实路径仍然落在 ALLOWED_REAL_ROOTS 中的
-    某一个受信任根目录之下。
+    并确保：
+      1. 解析软链接之后的真实路径仍然落在 ALLOWED_REAL_ROOTS 中的某一个受信任根目录之下；
+      2. 请求路径的任何一级、以及解析后的最终文件名，都不是被隐藏的名字
+         （dotfile、.pem 等）。
 
     返回解析后的真实物理路径；如果校验失败，返回 None。
     """
     if not isinstance(requested_url_path_normalized, str):
+        return None
+    if '\x00' in requested_url_path_normalized:
         return None
 
     try:
@@ -101,6 +146,11 @@ def resolve_safe_path(requested_url_path_normalized):
         candidate = os.path.abspath(os.path.join(ABS_FILE_SERVER_ROOT, safe_rel))
     except Exception:
         return None
+
+    # 请求路径中任何一级是隐藏名（.xxx / *.pem）都直接拒绝
+    for part in safe_rel.split('/'):
+        if is_hidden_name(part):
+            return None
 
     # candidate 必须位于 FILE_SERVER_ROOT 之下
     try:
@@ -115,36 +165,46 @@ def resolve_safe_path(requested_url_path_normalized):
         return None
 
     # 解析软链接后的真实路径必须位于允许的真实根目录集合内
-    for allowed_root in ALLOWED_REAL_ROOTS:
-        try:
-            if os.path.commonpath([allowed_root, real_candidate]) == allowed_root:
-                return real_candidate
-        except ValueError:
-            continue
+    if not is_within_allowed_roots(real_candidate):
+        return None
 
-    return None
+    # 软链接指向 xxx.pem / .xxx 的情况：按最终真实文件名再检查一次
+    if real_candidate not in ALLOWED_REAL_ROOTS and is_hidden_name(os.path.basename(real_candidate)):
+        return None
+
+    return real_candidate
 
 
 class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
-    # ==================== 新增方法来服务静态文件 ====================
+    # 不暴露 "BaseHTTP/0.6 Python/3.x" 版本信息
+    server_version = "ListServer"
+    sys_version = ""
+    # 单个 socket 操作的超时，缓解 slowloris 类慢速连接占用线程
+    timeout = 60
+
+    # ==================== 公共响应头 ====================
+    def _send_common_security_headers(self):
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+
+    # ==================== 服务静态文件 ====================
     def _serve_static_file(self, requested_url_path):
         """
-        根据 URL 路径，从 STATIC_ASSETS_DIR 目录服务静态文件。
+        根据 URL 路径（不含 query string），从 STATIC_ASSETS_DIR 目录服务静态文件。
         执行安全检查，防止目录遍历攻击。
         """
         try:
-            # 提取 /style/ 后的子路径，例如 "main.css" 或 "icons/favicon.ico"
-            # 假设所有静态文件请求都以 /style/ 开头
             if requested_url_path.startswith('/style/'):
-                # 获取 /style/ 后的部分路径
                 sub_path = requested_url_path[len('/style/'):]
             else:
-                # 理论上此分支不应该被触发，因为 do_GET 会先判断
                 self.send_error(http.HTTPStatus.INTERNAL_SERVER_ERROR, "Unexpected static path request.")
                 return
 
             # 对子路径进行 URL 解码和规范化，防止编码问题和路径异常
             decoded_sub_path = urllib.parse.unquote(sub_path, errors='surrogateescape')
+            if '\x00' in decoded_sub_path:
+                self.send_error(http.HTTPStatus.BAD_REQUEST, "Bad path.")
+                return
             normalized_sub_path = os.path.normpath(decoded_sub_path)
             # 额外检查：拒绝任何绝对路径
             if os.path.isabs(normalized_sub_path):
@@ -154,94 +214,79 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             # 构建和规范化目标物理路径
             candidate_path = os.path.normpath(os.path.join(STATIC_ASSETS_DIR, normalized_sub_path))
 
-            # --- 第一层安全检查：对拼接/规范化后的字符串路径做 startswith 校验 ---
-            # 写法对照 CodeQL 官方 py/path-injection 文档的推荐模式
-            # （https://codeql.github.com/codeql-query-help/python/py-path-injection/），
-            # 加 os.sep 后缀避免 "/style_evil" 这种前缀碰瓷绕过 "/style"。
+            # --- 第一层安全检查：字符串前缀校验（加 os.sep 避免 "/style_evil" 碰瓷） ---
             static_root_with_sep = STATIC_ASSETS_DIR + os.sep
             if not (candidate_path == STATIC_ASSETS_DIR or candidate_path.startswith(static_root_with_sep)):
                 self.send_error(http.HTTPStatus.FORBIDDEN, "Access to requested path outside static assets directory is forbidden.")
                 return
-            # --- 结束第一层安全检查 ---
-
-            # 获取 STATIC_ASSETS_DIR 和候选文件的真实路径（解析 symlink）
-            abs_static_realroot = os.path.realpath(os.path.abspath(STATIC_ASSETS_DIR))
-            abs_file_realpath = os.path.realpath(os.path.abspath(candidate_path))
 
             # --- 第二层安全检查：解析软链接后的真实路径仍必须落在静态根目录内 ---
+            abs_static_realroot = os.path.realpath(os.path.abspath(STATIC_ASSETS_DIR))
+            abs_file_realpath = os.path.realpath(os.path.abspath(candidate_path))
             static_realroot_with_sep = abs_static_realroot + os.sep
             if not (abs_file_realpath == abs_static_realroot or abs_file_realpath.startswith(static_realroot_with_sep)):
                 self.send_error(http.HTTPStatus.FORBIDDEN, "Access to requested path outside static assets directory is forbidden.")
                 return
-            # --- 结束安全检查 ---
 
-            # 检查文件是否存在且是普通文件
-            if not os.path.isfile(abs_file_realpath):
-                self.send_error(http.HTTPStatus.NOT_FOUND, "Static file not found.")
-                return
-            # 加强：禁止符号链接
-            if os.path.islink(abs_file_realpath):
-                self.send_error(http.HTTPStatus.FORBIDDEN, "Symlinks are not allowed for static assets.")
-                return
-            # 安全检查已于上方完成，无需重复校验
-
-            # 猜测文件的 MIME 类型
             mimetype, _ = mimetypes.guess_type(abs_file_realpath)
             if mimetype is None:
-                mimetype = 'application/octet-stream'  # 如果无法猜测，使用通用二进制流
-            # 就地清除 CR/LF/冒号，防止 HTTP Response Splitting；
-            # 直接写在 send_header 调用旁边，而不是经过独立的工具函数。
+                mimetype = 'application/octet-stream'
+            # 就地清除 CR/LF/冒号，防止 HTTP Response Splitting
             safe_mimetype = mimetype.replace('\r', '').replace('\n', '').replace(':', '')
-            self.send_response(http.HTTPStatus.OK)
-            self.send_header("Content-type", safe_mimetype)
-            self.send_header("Content-Length", str(os.path.getsize(abs_file_realpath)))
-            # 强烈建议为静态文件添加缓存头，提高客户端加载速度
-            self.send_header('Cache-Control', 'public, max-age=31536000')  # 缓存一年
-            self.end_headers()
 
-            # 以二进制模式读取文件并写入响应体
+            # 先打开、再 fstat：确认是普通文件，并避免“检查后文件被替换”的竞争
             with open(abs_file_realpath, 'rb') as f:
-                shutil.copyfileobj(f, self.wfile)  # 高效地复制文件内容到响应流
+                fs = os.fstat(f.fileno())
+                if not stat.S_ISREG(fs.st_mode):
+                    self.send_error(http.HTTPStatus.NOT_FOUND, "Static file not found.")
+                    return
+
+                self.send_response(http.HTTPStatus.OK)
+                self.send_header("Content-type", safe_mimetype)
+                self.send_header("Content-Length", str(fs.st_size))
+                self.send_header('Cache-Control', 'public, max-age=31536000')
+                self._send_common_security_headers()
+                self.end_headers()
+                shutil.copyfileobj(f, self.wfile)
             return
 
-        except FileNotFoundError:
+        except CONNECTION_ERRORS:
+            return  # 客户端中途断开，无需处理
+        except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
             self.send_error(http.HTTPStatus.NOT_FOUND, "Static file not found.")
         except PermissionError:
             self.send_error(http.HTTPStatus.FORBIDDEN, "Permission denied to read static file.")
         except Exception as e:
-            # 捕获其他未知错误
             print(f"Error serving static file {requested_url_path}: {e}", file=sys.stderr)
             self.send_error(http.HTTPStatus.INTERNAL_SERVER_ERROR, "Internal server error serving static file.")
 
-    # ==================== 结束新增方法 ====================
-
     def do_GET(self):
-        # ==================== 优先处理 /style/ 静态文件请求 ====================
-        if self.path.startswith('/style/'):
-            self._serve_static_file(self.path)
-            return  # 处理完静态文件后直接返回，不执行后续逻辑
-        # ==================== 结束 ====================
-
         parsed_url = urllib.parse.urlparse(self.path)
         url_path = parsed_url.path
+
+        # ==================== 优先处理 /style/ 静态文件请求 ====================
+        # 注意：必须用去掉 query string 的 url_path 判断，否则 /style/main.css?v=1 会 404
+        if url_path.startswith('/style/'):
+            self._serve_static_file(url_path)
+            return
+
         try:
             decoded_url_path = urllib.parse.unquote(url_path, errors='surrogateescape')
-            decoded_url_path = os.path.normpath(decoded_url_path)
+            if '\x00' in decoded_url_path:
+                raise ValueError("NUL byte in path")
+            # 统一成以单个 "/" 开头（normpath 会保留开头的 "//"，这里先去掉）
+            decoded_url_path = os.path.normpath('/' + decoded_url_path.lstrip('/'))
         except Exception:
             self.send_error(http.HTTPStatus.BAD_REQUEST, "Bad path.")
             return
 
-        # ==================== 路径安全校验（支持软链接） ====================
-        # 使用 resolve_safe_path 统一校验：解析软链接之后的真实路径，
-        # 必须落在 ALLOWED_REAL_ROOTS 允许的根目录集合内。
-        # 后续所有文件系统操作（isdir/isfile/listdir/open）都基于这个
-        # 已校验过的真实路径进行，而不是未经 realpath 解析的拼接路径，
+        # ==================== 路径安全校验（支持软链接 + 隐藏规则） ====================
+        # 后续所有文件系统操作都基于这个已校验过的真实路径进行，
         # 避免 "校验一个路径、实际访问另一个路径" 的漏洞。
         real_physical_path = resolve_safe_path(decoded_url_path)
         if real_physical_path is None:
             self.send_error(http.HTTPStatus.FORBIDDEN, "Access denied.")
             return
-        # ==================== 结束路径安全校验 ====================
 
         try:
             if os.path.isdir(real_physical_path):
@@ -252,6 +297,8 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
                 self.send_error(http.HTTPStatus.NOT_FOUND, "Resource type not supported.")
             else:
                 self.send_error(http.HTTPStatus.NOT_FOUND, "Resource not found.")
+        except CONNECTION_ERRORS:
+            return
         except PermissionError:
             self.send_error(http.HTTPStatus.FORBIDDEN, "Permission denied.")
         except Exception as e:
@@ -261,10 +308,8 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
     def serve_directory_listing(self, physical_path, display_url_path):
         try:
             items = os.listdir(physical_path)
-            filtered_items = [
-                name for name in items
-                if not name.startswith('.')
-            ]
+            # 隐藏 dotfile 以及 .pem 等被屏蔽的文件/目录
+            filtered_items = [name for name in items if not is_hidden_name(name)]
             filtered_items.sort(key=str.lower)
         except OSError as e:
             print(f"Error listing directory {physical_path}: {e}", file=sys.stderr)
@@ -309,9 +354,12 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
                 header_components.append(' / ')
                 escaped_segment = html.escape(segment)
                 quoted_segment_for_url = urllib.parse.quote(segment, errors='surrogateescape')
-                current_url_accumulator = urllib.parse.urljoin(current_url_accumulator, quoted_segment_for_url + '/')
+                # 不再使用 urljoin（它对特殊字符的处理容易出意外），直接拼接已 quote 的片段
+                current_url_accumulator += quoted_segment_for_url + '/'
                 if i < len(segments) - 1:
-                    header_components.append(f'<a href="{current_url_accumulator}">{escaped_segment}</a>')
+                    header_components.append(
+                        f'<a href="{html.escape(current_url_accumulator, quote=True)}">{escaped_segment}</a>'
+                    )
                 else:
                     header_components.append(f'{escaped_segment}')
 
@@ -334,37 +382,38 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             parent_url_path = os.path.normpath(os.path.join(display_url_path, os.pardir))
             parent_url_path = parent_url_path if parent_url_path.endswith('/') else parent_url_path + '/'
             quoted_parent_url_path = urllib.parse.quote(parent_url_path, errors='surrogateescape')
-            r.append(f'<tr class="parent-dir" data-name="../" data-size="-2" data-date="-2">')
-            r.append(f'<td><a href="{quoted_parent_url_path}">../</a></td>')
+            r.append('<tr class="parent-dir" data-name="../" data-size="-2" data-date="-2">')
+            r.append(f'<td><a href="{html.escape(quoted_parent_url_path, quote=True)}">../</a></td>')
             r.append('<td>-</td>')
             r.append('<td>-</td>')
             r.append('</tr>')
 
+        # 先把当前目录的 URL 前缀整体 quote 一次。
+        # （原来的写法把未 quote 的 display_url_path 交给 urljoin，目录名里若含有
+        #  双引号等字符，会被原样带进 href 属性，造成属性注入 / XSS。）
+        base_url_quoted = urllib.parse.quote(
+            display_url_path.rstrip('/') + '/', errors='surrogateescape'
+        )
+
         for name in filtered_items:
-            # name 来自 os.listdir(physical_path)，即已校验目录下的真实文件系统条目，
-            # 而不是用户请求中的原始字符串；这里再就地做一次 startswith 校验，
-            # 作为并发场景（TOCTOU）下的兜底防护。
             item_physical_path = os.path.join(physical_path, name)
             item_real_path = os.path.realpath(item_physical_path)
-            item_is_within_trusted_root = any(
-                item_real_path == allowed_root or item_real_path.startswith(allowed_root + os.sep)
-                for allowed_root in ALLOWED_REAL_ROOTS
-            )
-            if not item_is_within_trusted_root:
-                # 理论上不会发生（目录本身已校验过），出现说明并发场景下
-                # 文件系统发生了变化（TOCTOU），直接跳过这一项更安全。
+
+            # 兜底防护（TOCTOU / 软链接）：真实路径必须在受信任根目录内，
+            # 且软链接指向的最终文件名也不能是被隐藏的名字（例如 link -> key.pem）。
+            if not is_within_allowed_roots(item_real_path):
+                continue
+            if is_hidden_name(os.path.basename(item_real_path)):
                 continue
 
-            base_url_for_join = display_url_path if display_url_path.endswith('/') else display_url_path + '/'
             quoted_item_name = urllib.parse.quote(name, errors='surrogateescape')
-            item_url_path = urllib.parse.urljoin(base_url_for_join, quoted_item_name)
+            item_url_path = base_url_quoted + quoted_item_name
 
             displayname = html.escape(name)
             is_dir = os.path.isdir(item_real_path)
             if is_dir:
                 displayname += "/"
-                if not item_url_path.endswith('/'):
-                    item_url_path += '/'
+                item_url_path += '/'
 
             stats = None
             try:
@@ -389,7 +438,7 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             escaped_sort_date = html.escape(str(sort_date), quote=True)
 
             r.append(f'<tr data-name="{escaped_sort_name}" data-size="{escaped_sort_size}" data-date="{escaped_sort_date}">')
-            r.append(f'<td><a href="{item_url_path}">{displayname}</a></td>')
+            r.append(f'<td><a href="{html.escape(item_url_path, quote=True)}">{displayname}</a></td>')
             r.append(f'<td>{size_display}</td>')
             r.append(f'<td>{date_display}</td>')
             r.append('</tr>')
@@ -411,6 +460,8 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             display_domain = main_domain
 
             domain_info = DOMAIN_FOOTER_INFO.get(display_domain)
+            if not isinstance(domain_info, dict):
+                domain_info = None
 
         r.append('<p class="footer-info">')
         r.append('  <span class="footer-left">')
@@ -422,18 +473,18 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
             mps_url_val = domain_info.get("mps_url", "#")
 
             if icp_text_val:
-                r.append(f'    <a href="{html.escape(icp_url_val)}" target="_blank">{html.escape(icp_text_val)}</a>')
+                r.append(f'    <a href="{html.escape(icp_url_val)}" rel="noopener noreferrer" target="_blank">{html.escape(icp_text_val)}</a>')
 
             if icp_text_val and mps_text_val:
                 r.append('    &nbsp;&nbsp;')
 
             if mps_text_val:
-                r.append(f'    <img src="https://beian.mps.gov.cn/img/logo01.dd7ff50e.png" alt="公安网备图标" class="beian-icon">')
-                r.append(f'    <a href="{html.escape(mps_url_val)}" rel="noreferrer" target="_blank">{html.escape(mps_text_val)}</a>')
+                r.append('    <img src="https://beian.mps.gov.cn/img/logo01.dd7ff50e.png" alt="公安网备图标" class="beian-icon">')
+                r.append(f'    <a href="{html.escape(mps_url_val)}" rel="noopener noreferrer" target="_blank">{html.escape(mps_text_val)}</a>')
 
         r.append('  </span>')
         r.append('  <span class="footer-right">')
-        r.append('    Page is auto-generated with <a href="https://www.python.org/" target="_blank">Python</a>')
+        r.append('    Page is auto-generated with <a href="https://www.python.org/" rel="noopener noreferrer" target="_blank">Python</a>')
         r.append('  </span>')
         r.append('</p>')
 
@@ -444,44 +495,66 @@ class CustomListingAndFileHandler(http.server.BaseHTTPRequestHandler):
         r.append('</div>')
         r.append('</body></html>')
 
-        encoded_html = '\n'.join(r).encode('utf-8')
+        # errors='replace'：文件名/路径里如果有非 UTF-8 字节（surrogateescape 产生的代理字符），
+        # 原来的 .encode('utf-8') 会抛 UnicodeEncodeError，导致整个目录 500。
+        encoded_html = '\n'.join(r).encode('utf-8', errors='replace')
 
         self.send_response(http.HTTPStatus.OK)
         self.send_header("Content-type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(encoded_html)))
+        self._send_common_security_headers()
+        self.send_header("Content-Security-Policy", LISTING_CSP)
+        self.send_header("X-Frame-Options", "DENY")
         self.end_headers()
         self.wfile.write(encoded_html)
 
     def serve_file(self, physical_path):
+        headers_sent = False
         try:
             mimetype, _ = mimetypes.guess_type(physical_path)
             if mimetype is None:
                 mimetype = 'application/octet-stream'
-            # 就地清除 CR/LF/冒号，防止 HTTP Response Splitting；
-            # 直接写在 send_header 调用旁边，而不是经过独立的工具函数。
+            # 就地清除 CR/LF/冒号，防止 HTTP Response Splitting
             safe_mimetype = mimetype.replace('\r', '').replace('\n', '').replace(':', '')
 
-            file_size = os.path.getsize(physical_path)
-
-            self.send_response(http.HTTPStatus.OK)
-            self.send_header("Content-type", safe_mimetype)
-            self.send_header("Content-Length", str(file_size))
-            self.end_headers()
-
+            # 先打开、再 fstat，避免检查与使用之间文件被替换
             with open(physical_path, 'rb') as f:
+                fs = os.fstat(f.fileno())
+                if not stat.S_ISREG(fs.st_mode):
+                    self.send_error(http.HTTPStatus.NOT_FOUND, "Resource type not supported.")
+                    return
+
+                self.send_response(http.HTTPStatus.OK)
+                headers_sent = True
+                self.send_header("Content-type", safe_mimetype)
+                self.send_header("Content-Length", str(fs.st_size))
+                self._send_common_security_headers()
+                # 用户目录里的 .html / .svg / .xml 等文件与列表页同源，
+                # 直接打开会执行其中的脚本（存储型 XSS）。
+                # CSP sandbox 会让这些文档以“唯一源 + 禁止脚本”的方式渲染，
+                # 对 RSS/XML、图片、下载等正常用途没有影响。
+                self.send_header("Content-Security-Policy", "sandbox")
+                self.end_headers()
                 shutil.copyfileobj(f, self.wfile)
 
+        except CONNECTION_ERRORS:
+            return  # 客户端中途断开
         except FileNotFoundError:
-            self.send_error(http.HTTPStatus.NOT_FOUND, "File not found or inaccessible.")
+            if not headers_sent:
+                self.send_error(http.HTTPStatus.NOT_FOUND, "File not found or inaccessible.")
         except PermissionError:
-            self.send_error(http.HTTPStatus.FORBIDDEN, "Permission denied to read file.")
+            if not headers_sent:
+                self.send_error(http.HTTPStatus.FORBIDDEN, "Permission denied to read file.")
         except Exception as e:
             print(f"Error serving file {physical_path}: {e}", file=sys.stderr)
-            self.send_error(http.HTTPStatus.INTERNAL_SERVER_ERROR, "Internal server error.")
+            # 响应头已发出后再 send_error 会把错误页拼进文件内容，所以只在未发送时才发
+            if not headers_sent:
+                self.send_error(http.HTTPStatus.INTERNAL_SERVER_ERROR, "Internal server error.")
 
 
 class ThreadedTCPServer(ThreadingMixIn, socketserver.TCPServer):
-    pass
+    # 线程随主进程退出，避免关闭时被慢连接卡住
+    daemon_threads = True
 
 
 if __name__ == "__main__":
@@ -495,19 +568,18 @@ if __name__ == "__main__":
         sys.stdout.flush()
         sys.exit(1)
 
-    # ==================== 检查 STATIC_ASSETS_DIR ====================
     # 确保静态文件目录也存在，否则静态文件无法被服务
     if not os.path.isdir(STATIC_ASSETS_DIR):
         print(f"Warning: Static assets directory not found or not accessible: {STATIC_ASSETS_DIR}", file=sys.stderr)
-        # 可以选择退出或继续，这里我们选择警告并继续，因为可能有些部署不需要静态文件
         sys.stdout.flush()
-    # ==================== 结束 ====================
 
     print(f"Attempting to start server on port {LISTEN_PORT}")
     sys.stdout.flush()
     print(f"Serving content from file root: {FILE_SERVER_ROOT}")
     sys.stdout.flush()
     print(f"Allowed real roots (symlink targets included): {ALLOWED_REAL_ROOTS}")
+    sys.stdout.flush()
+    print(f"Hidden suffixes (also blocked on direct access): {list(HIDDEN_SUFFIXES)}; dotfiles are always hidden")
     sys.stdout.flush()
 
     server_address = ('', LISTEN_PORT)
